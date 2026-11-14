@@ -166,6 +166,88 @@ body::before {
   border-color: rgba(245, 166, 35, 0.35);
 }
 
+/* ------------------------------------------------ map pins (globe + map) */
+.rd-pin {
+  position: relative;
+  width: 26px;
+  height: 36px;
+  transform: translate(-50%, -100%) scale(var(--pin-scale, 1));
+  cursor: pointer;
+  transform-origin: 50% 100%;
+  transition: transform 0.18s var(--ease-spring), filter 0.18s var(--ease-spring);
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+  will-change: transform;
+}
+.rd-pin svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.rd-pin:hover {
+  transform: translate(-50%, -100%) scale(calc(var(--pin-scale, 1) * 1.14));
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.62)) drop-shadow(0 0 14px var(--pin-glow));
+}
+.rd-pin.is-selected {
+  width: 32px;
+  height: 44px;
+  z-index: 5;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.65)) drop-shadow(0 0 16px var(--pin-glow));
+}
+.rd-pin.is-selected::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--pin-glow) 0%, transparent 68%);
+  opacity: 0.85;
+  animation: pinHalo 2.4s var(--ease-spring) infinite;
+  pointer-events: none;
+}
+@keyframes pinHalo {
+  0%, 100% { transform: scale(0.85); opacity: 0.75; }
+  50% { transform: scale(1.15); opacity: 0.25; }
+}
+.rd-pin.is-query::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  width: 40px;
+  height: 40px;
+  margin: -20px 0 0 -20px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(99, 224, 206, 0.85);
+  animation: querySpin 6s linear infinite;
+  pointer-events: none;
+}
+@keyframes querySpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Leaflet sizes and anchors the icon box itself, so the pin fills it
+   directly instead of translating by its own dimensions. */
+.rd-pin-wrap {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: transparent;
+  border: 0;
+}
+.rd-pin-wrap .rd-pin,
+.rd-pin-wrap .rd-pin:hover {
+  width: 100%;
+  height: 100%;
+  transform: none;
+}
+.rd-pin-wrap .rd-pin:hover {
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 12px var(--pin-glow));
+}
+
 .bar {
   height: 5px;
   border-radius: 999px;

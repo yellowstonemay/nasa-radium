@@ -226,6 +226,75 @@
     highlightOnStage(fly !== false);
   }
 
+  /* ------------------------------------------------------------------ pins */
+  const PIN_SVG =
+    '<svg viewBox="0 0 32 44" aria-hidden="true">' +
+      '<path d="M16 42.4C16 42.4 3.1 27 3.1 16A12.9 12.9 0 0 1 28.9 16c0 11-12.9 26.4-12.9 26.4Z" ' +
+        'fill="var(--pin)" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round"/>' +
+      '<circle cx="16" cy="15.8" r="5.1" fill="#ffffff" fill-opacity="0.96"/>' +
+      '<circle cx="16" cy="15.8" r="2.2" fill="var(--pin-core)" fill-opacity="0.92"/>' +
+    "</svg>";
+
+  function pinElement({ color, glow, selected, query, label, onClick }) {
+    const node = document.createElement("div");
+    node.className = "rd-pin" + (selected ? " is-selected" : "") + (query ? " is-query" : "");
+    node.style.setProperty("--pin", color);
+    node.style.setProperty("--pin-core", shade(color, -0.45));
+    node.style.setProperty("--pin-glow", glow || "rgba(99,224,206,0.55)");
+    node.innerHTML = PIN_SVG;
+    node.setAttribute("aria-hidden", "true");
+    if (label) node.title = label;
+    if (onClick) {
+      node.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onClick();
+      });
+    }
+    return node;
+  }
+
+  function shade(hex, amount) {
+    const value = hex.replace("#", "");
+    const num = parseInt(value.length === 3 ? value.split("").map((c) => c + c).join("") : value, 16);
+    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
+    const r = clamp(((num >> 16) & 255) * (1 + amount));
+    const g = clamp(((num >> 8) & 255) * (1 + amount));
+    const b = clamp((num & 255) * (1 + amount));
+    return "rgb(" + r + "," + g + "," + b + ")";
+  }
+
+  function hexToRgba(hex, alpha) {
+    const value = hex.replace("#", "");
+    const num = parseInt(value.length === 3 ? value.split("").map((c) => c + c).join("") : value, 16);
+    return (
+      "rgba(" + ((num >> 16) & 255) + "," + ((num >> 8) & 255) + "," + (num & 255) + "," + alpha + ")"
+    );
+  }
+
+  function pinColor(letter) {
+    return GRADE_COLOR[letter] || "#63e0ce";
+  }
+
+  function selectedPinColor() {
+    return "#63e0ce";
+  }
+
+  /* Hide pins on the far hemisphere: a surface point is visible while its
+     angular distance from the camera target stays inside the horizon angle. */
+  function pointIsVisible(lat, lng) {
+    if (!globe) return true;
+    const view = globe.pointOfView() || {};
+    const altitude = Math.max(0.02, view.altitude || 2);
+    const horizon = Math.acos(1 / (1 + altitude)) * 1.04;
+    const toRad = Math.PI / 180;
+    const dLat = (lat - (view.lat || 0)) * toRad;
+    const dLng = (lng - (view.lng || 0)) * toRad;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat * toRad) * Math.cos((view.lat || 0) * toRad) * Math.sin(dLng / 2) ** 2;
+    return 2 * Math.asin(Math.min(1, Math.sqrt(a))) <= horizon;
+  }
+
   /* ------------------------------------------------------ conditions grids */
   const GRID_META = { moon: window.RADIUM_GRID_MOON, mars: window.RADIUM_GRID_MARS };
   const gridCache = { moon: {}, mars: {} };
@@ -325,7 +394,7 @@
     renderRail();
     renderDetail();
     if (globe) {
-      updateRings();
+      renderGlobePoints();
       globe.pointOfView({ lat: lat * 0.9, lng: lon, altitude: stageAltitude() }, 700);
     }
   }
@@ -358,16 +427,6 @@
       .showAtmosphere(true)
       .atmosphereColor("#9fc4ff")
       .atmosphereAltitude(0.17)
-      .pointAltitude((d) => d.alt)
-      .pointRadius((d) => d.radius)
-      .pointResolution(24)
-      .pointColor((d) => d.color)
-      .pointLabel(
-        (d) =>
-          '<div style="font:12px/1.45 Inter,Segoe UI,sans-serif;color:#ece6d8;padding:2px 4px">' +
-          d.name + '<br><span style="color:#8d97ac">' + d.region + "</span></div>"
-      )
-      .onPointClick((d) => selectSite(d.id))
       .onGlobeClick(({ lat, lng }) => handleGlobeClick(lat, lng));
 
     const controls = globe.controls();
@@ -379,6 +438,7 @@
     controls.maxDistance = 680;
     controls.autoRotateSpeed = 0.35;
     controls.addEventListener("change", schedulePinScale);
+    controls.addEventListener("change", schedulePinVisibility);
 
     const resize = () => {
       const rect = host.getBoundingClientRect();
@@ -402,63 +462,77 @@
   function updatePinScale() {
     if (!globe) return;
     const altitude = (globe.pointOfView() || {}).altitude || 2.2;
-    pinScale = 0.8 + altitude * 0.55;
-    globe.pointRadius((d) => d.radius * pinScale);
-    globe.ringMaxRadius((d) => (d.selected ? 5 : 2.6) * (pinScale / 2));
+    pinScale = 0.75 + altitude * 0.42;
+    const host = document.getElementById("view-globe");
+    if (!host) return;
+    host.querySelectorAll(".rd-pin").forEach((node) => {
+      node.style.setProperty("--pin-scale", pinScale.toFixed(3));
+    });
   }
 
   function schedulePinScale() {
     if (pinScaleTimer) clearTimeout(pinScaleTimer);
-    pinScaleTimer = setTimeout(updatePinScale, 120);
+    pinScaleTimer = setTimeout(updatePinScale, 90);
+  }
+
+  let pinVisibilityTimer = null;
+  function schedulePinVisibility() {
+    if (!globe) return;
+    if (pinVisibilityTimer) clearTimeout(pinVisibilityTimer);
+    pinVisibilityTimer = setTimeout(() => {
+      globe.htmlElementVisibilityModifier((element, d) => pointIsVisible(d.lat, d.lng));
+    }, 90);
   }
 
   function renderGlobePoints() {
     if (!globe) return;
     const selectedId = state.selected[state.body];
-    const rank = new Map(sortedSites(state.body).map((row, index) => [row.site.id, index]));
-    const points = activeSites().map((site) => {
+    const sites = activeSites();
+
+    const data = sites.map((site) => {
       const card = scoreFor(site);
       const isSelected = site.id === selectedId;
+      const color = isSelected ? selectedPinColor() : pinColor(card.letter);
       return {
         id: site.id,
-        name: site.name,
-        region: site.region,
         lat: site.lat,
         lng: site.lon,
-        color: isSelected ? "#fff3d6" : GRADE_COLOR[card.letter],
-        radius: isSelected ? 1.25 : 0.9,
-        // Rank-staggered height keeps polar pins from collapsing into one blob.
-        alt: isSelected ? 0.05 : 0.014 + (rank.get(site.id) || 0) * 0.005 + (card.value / 100) * 0.012
+        isSelected,
+        color,
+        glow: hexToRgba(color, 0.6),
+        label: site.name + " — grade " + card.letter + " (" + fmt(card.value, 1) + ")"
       };
     });
-    globe.pointsData(points);
-    updatePinScale();
-    updateRings();
-  }
 
-  function updateRings() {
-    if (!globe) return;
-    const selectedId = state.selected[state.body];
-    const rings = activeSites().map((site) => ({
-      lat: site.lat,
-      lng: site.lon,
-      selected: site.id === selectedId
-    }));
-    if (state.point) {
-      rings.push({ lat: state.point.conditions.lat, lng: state.point.conditions.lon, selected: true, query: true });
+    if (state.point && state.point.body === state.body) {
+      data.push({
+        id: "__query",
+        lat: state.point.conditions.lat,
+        lng: state.point.conditions.lon,
+        isQuery: true,
+        color: "#63e0ce",
+        glow: "rgba(99,224,206,0.7)",
+        label: "Query point"
+      });
     }
+
     globe
-      .ringsData(rings)
-      .ringColor((d) => (t) =>
-        d.query
-          ? "rgba(99,224,206," + (1 - t) * 0.9 + ")"
-          : d.selected
-          ? "rgba(245,166,35," + (1 - t) * 0.85 + ")"
-          : "rgba(236,230,216," + (1 - t) * 0.32 + ")"
+      .htmlElementsData(data)
+      .htmlAltitude(0.008)
+      .htmlTransitionDuration(0)
+      .htmlElement((d) =>
+        pinElement({
+          color: d.color,
+          glow: d.glow,
+          selected: d.isSelected,
+          query: d.isQuery,
+          label: d.label,
+          onClick: d.isQuery ? null : () => selectSite(d.id)
+        })
       )
-      .ringMaxRadius((d) => (d.selected ? 5 : 2.6))
-      .ringPropagationSpeed(1.8)
-      .ringRepeatPeriod((d) => (d.selected ? 900 : 2200));
+      .htmlElementVisibilityModifier((element, d) => pointIsVisible(d.lat, d.lng));
+
+    updatePinScale();
   }
 
   function stageAltitude() {
@@ -721,28 +795,44 @@
     SITES.earth.forEach((site) => {
       const card = scoreFor(site);
       const isSelected = state.selected.earth === site.id;
-      const marker = L.circleMarker([site.lat, site.lon], {
-        radius: isSelected ? 9 : 6.5,
-        color: isSelected ? "#f5a623" : GRADE_COLOR[card.letter],
-        weight: isSelected ? 2.4 : 1.4,
-        fillColor: GRADE_COLOR[card.letter],
-        fillOpacity: 0.85
+      const color = isSelected ? selectedPinColor() : pinColor(card.letter);
+      const zoom = earthMap.getZoom();
+      const shrink = zoom <= 3.5 ? 0.78 : 1;
+      const height = Math.round((isSelected ? 44 : 32) * shrink);
+      const width = Math.round((isSelected ? 32 : 24) * shrink);
+
+      const marker = L.marker([site.lat, site.lon], {
+        icon: L.divIcon({
+          className: "rd-pin-wrap",
+          html: pinElement({
+            color,
+            glow: hexToRgba(color, 0.6),
+            selected: isSelected,
+            label: site.name + " — grade " + card.letter
+          }).outerHTML,
+          iconSize: [width, height],
+          iconAnchor: [width / 2, height]
+        }),
+        keyboard: true,
+        title: site.name + " — grade " + card.letter,
+        riseOnHover: true
       }).addTo(earthMap);
 
-      marker.bindTooltip(site.name + " — grade " + card.letter, { direction: "top", offset: [0, -6] });
       marker.on("click", () => selectSite(site.id));
       earthMarkers.push(marker);
 
       if (isSelected) {
-        const zoom = earthMap ? earthMap.getZoom() : 2;
+        const zoom = earthMap.getZoom();
         const radiusM = zoom >= 10 ? 2500 : zoom >= 7 ? 15000 : zoom >= 5 ? 60000 : 120000;
-        L.circle([site.lat, site.lon], {
+        const halo = L.circle([site.lat, site.lon], {
           radius: radiusM,
-          color: "rgba(245,166,35,0.55)",
+          color: "rgba(99,224,206,0.45)",
           weight: zoom >= 10 ? 1.5 : 1,
-          fillColor: "rgba(245,166,35,0.10)",
+          dashArray: "4 5",
+          fillColor: "rgba(99,224,206,0.06)",
           fillOpacity: 1
         }).addTo(earthMap);
+        earthMarkers.push(halo);
       }
     });
   }
