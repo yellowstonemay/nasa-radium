@@ -12,6 +12,7 @@ query anywhere, plus a graded shortlist on each body:
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
+| **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
 | **Earth Twin mode** | any curated site *or* clicked point → the map jumps to Earth and ranks its closest matches |
 
 ## Run it
@@ -35,11 +36,13 @@ python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attri
 python tools\build_site_thumbs.py   # Moon/Mars surface crops for each pin
 python tools\merge_moon_texture.py  # blends WAC detail with the polar-filled texture
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
+python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
 ```
 
 Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
-for that Moon site; `#earth:earth_suit` opens the analog-grade field; `#mars` opens Mars; and
-`#earth:earth_base:craters-of-the-moon:15` jumps straight to a site at zoom 15.
+for that Moon site; `#earth:earth_suit` opens the analog-grade field; `#earth:earth_prospect` opens
+the global screening field; `#earth:earth_base:prospect-01:8` jumps to a discovered candidate; `#mars`
+opens Mars; and `#earth:earth_base:craters-of-the-moon:15` jumps straight to a curated site at zoom 15.
 
 Screenshots: `node screenshot.mjs http://localhost:3000 [label]` (needs Puppeteer; set
 `PUPPETEER_PATH` if it is installed outside this repo).
@@ -62,6 +65,7 @@ which is which.
 | Earth surface temperature | **computed** IDW of the 40 NASA POWER climatologies, faded beyond 2,500 km | [NASA POWER](https://power.larc.nasa.gov/) |
 | Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
+| Earth prospect scan | **computed** 0.25° global screening of every land cell against the analog envelope | [AWS terrain](https://registry.opendata.aws/terrain-tiles/) · [WorldClim](https://www.worldclim.org/data/worldclim21.html) · [Natural Earth](https://www.naturalearthdata.com/) |
 
 ### Map pins
 
@@ -144,6 +148,45 @@ literature-derived regional estimates. Each dossier shows a confidence tag and a
 Known caveats: POWER is 0.5° grid-cell climatology (summit sites read warmer than station data);
 Moon/Mars values are regional not in-situ; atmosphere is deliberately excluded from the Earth Twin
 similarity because nothing on Earth reproduces a vacuum or ~0.6 kPa.
+
+## Global analog prospector (discovered candidates)
+
+The 40 curated sites are published work — someone already wrote them down. The Discovered switch
+adds candidates **nobody has described as analogs**, found by screening the whole planet rather
+than by reading papers.
+
+`tools/build_prospect_scan.py` runs offline-friendly global datasets over a 0.25° equirectangular
+grid (1,036,800 cells, 224,663 of which pass the masks):
+
+| Dataset | What it contributes |
+| --- | --- |
+| AWS Terrain Tiles (Mapzen terrarium, SRTM/NED/GMTED/ETOPO blend), zoom 5 | elevation mean, slope mean and within-cell relief from a 4.9 km DEM |
+| WorldClim 2.1 bio, 10 arc-minute | annual mean / max / min temperature, precipitation, precipitation seasonality |
+| Natural Earth 50m land, glaciated areas, lakes | land mask, ice-cap and lake exclusion |
+| Natural Earth 50m countries, 10m populated places | country label and nearest settlement used to name each candidate |
+| NASA POWER climatology + NOAA ETOPO1 | finalist refinement, identical to the curated pipeline |
+
+How a cell is scored: the curated analogs are the training set. For each dimension the scan takes
+the **measured** value at those 40 locations on the same grid, computes a robust centre and spread
+(median, IQR/1.349), and scores every cell by its Gaussian membership. The memberships are combined
+with a **weighted geometric mean**, so a cell cannot buy a high score by matching most dimensions
+while failing one badly — an analog that is far too wet is not an analog.
+
+Masks: land, above sea level, not an ice sheet or glacier, not a lake, no data holes, and no polar
+cell below 20 m (ice shelves and lagoon flats). Then the shortlist is drawn round-robin across 12
+climate zones (4 temperature × 3 precipitation) with 700 km minimum spacing, at most 3 per country,
+and at least 200 km from any curated site — so the output is a spread of genuinely new places, not
+one desert repeated.
+
+Each finalist is then queried with POWER + ETOPO1 for real numbers and graded with **the same
+eight-row rubric** as everything else. The dossier labels the ice, dust, subsurface, biosignature
+and science rows with `*` because those are proxies derived from climate and terrain, not field
+observations, and says plainly that the site is a proposal to survey. Clicking anywhere on the map
+also reads the shipped screening raster and reports the cell's screen score.
+
+Current output: **39 candidates in 22 countries**, e.g. 57 km WSW of Yakima (basalt plateau),
+35 km SSW of Zapala (Patagonian steppe), 58 km E of Serdar (Karakum), 116 km ENE of Beaufort West
+(Namaqualand), 187 km NNW of Koktokay (Junggar), 53 km SE of Green River (Utah canyonlands).
 
 ## Scoring
 

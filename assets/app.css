@@ -345,6 +345,41 @@ body::before {
   background: rgba(245, 166, 35, 0.16);
 }
 
+/* Curated / discovered switch above the Earth shortlist. */
+#rail-split:not(.hidden) { display: flex; }
+.set-btn {
+  flex: 1;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.3rem 0.5rem;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 0.18s var(--ease-spring), background 0.18s var(--ease-spring),
+    border-color 0.18s var(--ease-spring), transform 0.18s var(--ease-spring);
+}
+.set-btn:hover { color: var(--bone); border-color: rgba(255, 255, 255, 0.2); }
+.set-btn:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.set-btn:active { transform: scale(0.97); }
+.set-btn[aria-pressed="true"] {
+  color: var(--bone);
+  border-color: rgba(93, 220, 201, 0.5);
+  background: rgba(93, 220, 201, 0.14);
+}
+
+/* Discovered candidates are screened, not surveyed: the pin keeps the letter
+   but sits inside a dashed ring so it never reads as a published analog. */
+.rd-pin.is-prospect::before {
+  content: "";
+  position: absolute;
+  inset: -5px -3px 3px -3px;
+  border-radius: 999px;
+  border: 1px dashed rgba(93, 220, 201, 0.75);
+  pointer-events: none;
+}
+
 .scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.16) transparent;

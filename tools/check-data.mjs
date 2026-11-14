@@ -13,19 +13,21 @@ await load("data/moon-sites.js", "RADIUM_MOON");
 await load("data/mars-sites.js", "RADIUM_MARS");
 await load("data/earth-sites.js", "RADIUM_EARTH_SITES");
 const earthMetrics = await load("earth-metrics.js", "RADIUM_EARTH");
+const prospects = await load("data/prospect-sites.js", "RADIUM_PROSPECT_SITES");
 
 const scoringSource = await readFile(new URL("../assets/scoring.js", import.meta.url), "utf8");
 const sandbox = { window: { RADIUM_MOON: await load("data/moon-sites.js", "RADIUM_MOON"),
   RADIUM_MARS: await load("data/mars-sites.js", "RADIUM_MARS"),
   RADIUM_EARTH_SITES: await load("data/earth-sites.js", "RADIUM_EARTH_SITES"),
-  RADIUM_EARTH: earthMetrics } };
+  RADIUM_EARTH: earthMetrics,
+  RADIUM_PROSPECT_SITES: prospects } };
 new Function("window", scoringSource)(sandbox.window);
 
 const { buildSites, scoreSite, DEFAULT_WEIGHTS, similarity, topTwins } = sandbox.window.RADIUM;
 const sites = buildSites();
 const problems = [];
 
-for (const body of ["moon", "mars", "earth"]) {
+for (const body of ["moon", "mars", "earth", "discovered"]) {
   if (!sites[body].length) problems.push(`${body}: no sites built`);
   for (const site of sites[body]) {
     if (!site.source || !site.source.url) problems.push(`${site.id}: missing source`);
@@ -43,6 +45,34 @@ for (const body of ["moon", "mars", "earth"]) {
   }
   if (sites.earth.length < 30) {
     problems.push(`earth: only ${sites.earth.length} sites, expected at least 30`);
+  }
+}
+
+// Discovered candidates must stay clear of the curated set, sit on buildable
+// land, and remain spread out rather than clustering in one desert.
+if (sites.discovered.length < 20) {
+  problems.push(`discovered: only ${sites.discovered.length} candidates`);
+}
+const curatedIds = new Set(sites.earth.map((s) => s.id));
+for (const site of sites.discovered) {
+  if (curatedIds.has(site.id)) problems.push(`${site.id}: duplicate of a curated site`);
+  if (!site.prospect || !site.estimated || !site.estimated.length) {
+    problems.push(`${site.id}: not tagged as a screening estimate`);
+  }
+  if (!site.nearestAnalog || !(site.nearestAnalog.km >= 150)) {
+    problems.push(`${site.id}: too close to a known analog`);
+  }
+  if (!(site.elevationM >= 0)) problems.push(`${site.id}: elevation ${site.elevationM} m`);
+  if (!(Math.abs(site.lat) < 84)) problems.push(`${site.id}: polar ice (${site.lat})`);
+  if (!(site.precipMmDay >= 0 && site.precipMmDay < 12)) problems.push(`${site.id}: rain ${site.precipMmDay}`);
+  if (!(site.tempMeanC > -35 && site.tempMeanC < 40)) problems.push(`${site.id}: temp ${site.tempMeanC}`);
+}
+for (let i = 0; i < sites.discovered.length; i += 1) {
+  for (let j = i + 1; j < sites.discovered.length; j += 1) {
+    const a = sites.discovered[i];
+    const b = sites.discovered[j];
+    const d = sandbox.window.RADIUM.distanceKm(a.lat, a.lon, b.lat, b.lon);
+    if (d < 400) problems.push(`${a.id}/${b.id} only ${d.toFixed(0)} km apart`);
   }
 }
 
@@ -90,5 +120,5 @@ if (problems.length) {
   process.exit(1);
 }
 console.log(
-  `OK — ${sites.moon.length} Moon + ${sites.mars.length} Mars + ${sites.earth.length} Earth sites, scores and twins valid.`
+  `OK — ${sites.moon.length} Moon + ${sites.mars.length} Mars + ${sites.earth.length} Earth sites, ${sites.discovered.length} discovered candidates, scores and twins valid.`
 );

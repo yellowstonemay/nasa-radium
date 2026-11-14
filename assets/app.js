@@ -89,6 +89,13 @@
         label: "Twin similarity",
         legend: "Similarity to the selected Moon/Mars target, interpolated across Earth",
         kind: "twin"
+      },
+      {
+        id: "earth_prospect",
+        label: "Prospect scan",
+        legend:
+          "Global screening: every quarter-degree land cell scored against the measured envelope of the 40 catalogued analogs (AWS terrain tiles + WorldClim 2.1). Switch the shortlist to Discovered to see the candidates this found.",
+        kind: "raster"
       }
     ]
   };
@@ -100,7 +107,10 @@
     weights: Object.assign({}, R.DEFAULT_WEIGHTS),
     twinSource: null,
     point: null,
-    labels: true
+    labels: true,
+    /* Earth has two shortlists: the 40 published analogs and the 40 new
+       candidates discovered by the global scan. */
+    set: "curated"
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -121,20 +131,29 @@
   }
 
   function sortedSites(body) {
-    const rows = SITES[body].map((site) => ({ site, card: scoreFor(site) }));
+    const rows = activeSites().map((site) => ({ site, card: scoreFor(site) }));
     if (state.twinSource && body === "earth") {
       return rows
         .map((row) => Object.assign(row, { match: R.similarity(state.twinSource, row.site).score }))
         .sort((a, b) => b.match - a.match);
     }
+    // Discovered candidates keep the scan order: their screen score is the
+    // discovery ranking, while the letter badge stays the shared rubric grade.
+    if (body === "earth" && state.set === "discovered") {
+      return rows.sort((a, b) => b.site.screenScore - a.site.screenScore);
+    }
     return rows.sort((a, b) => b.card.value - a.card.value);
   }
 
-  function activeSites() { return SITES[state.body]; }
+  function activeSites() {
+    if (state.body === "earth" && state.set === "discovered") return SITES.discovered;
+    return SITES[state.body];
+  }
 
   function selectedSite() {
     const id = state.selected[state.body];
-    return activeSites().find((s) => s.id === id) || null;
+    const pool = state.body === "earth" ? SITES.earth.concat(SITES.discovered) : activeSites();
+    return pool.find((s) => s.id === id) || null;
   }
 
   /* ---------------------------------------------------------------- tabs */
@@ -219,8 +238,21 @@
     }
 
     const rows = sortedSites(state.body);
-    $("#rail-title").textContent = BODY_META[state.body].title;
-    $("#rail-note").textContent = BODY_META[state.body].note;
+    const split = $("#rail-split");
+    if (split) {
+      const showSplit = state.body === "earth";
+      split.classList.toggle("hidden", !showSplit);
+      split.querySelectorAll("[data-set]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.set === state.set));
+      });
+    }
+    const discoveredView = state.body === "earth" && state.set === "discovered";
+    $("#rail-title").textContent = discoveredView
+      ? "Discovered candidates"
+      : BODY_META[state.body].title;
+    $("#rail-note").textContent = discoveredView
+      ? discoveredNote()
+      : BODY_META[state.body].note;
     $("#rail-count").textContent = rows.length;
     rows.forEach(({ site, card, match }, index) => {
       const btn = el("button", "site-row");
@@ -230,17 +262,30 @@
         gradeBadge(card.letter) +
         '<span class="min-w-0 flex-1">' +
           '<span class="block truncate text-[13px] text-bone">' + site.name + "</span>" +
-          '<span class="mt-0.5 block truncate text-[11px] text-muted">' + site.region + "</span>" +
+          '<span class="mt-0.5 block truncate text-[11px] text-muted">' +
+            site.region + (site.prospect ? " · screened" : "") +
+          "</span>" +
         "</span>" +
         '<span class="text-right">' +
           '<span class="block text-[13px] tabular-nums text-bone">' +
-            fmt(match != null ? match : card.value, 1) + "</span>" +
+            fmt(match != null ? match : discoveredView ? site.screenScore : card.value, 1) + "</span>" +
           '<span class="block text-[10px] uppercase tracking-widest text-muted">' +
-            (match != null ? "match" : "#" + (index + 1)) + "</span>" +
+            (match != null ? "match" : discoveredView ? "screen" : "#" + (index + 1)) + "</span>" +
         "</span>";
       btn.addEventListener("click", () => selectSite(site.id));
       list.appendChild(btn);
     });
+  }
+
+  function discoveredNote() {
+    const meta = window.RADIUM_PROSPECT_META;
+    const cells = meta ? meta.screenedCells.toLocaleString() : "1,000,000";
+    return (
+      "New candidates found by the global scan: " + cells +
+      " quarter-degree land cells scored against the measured envelope of the 40 catalogued analogs " +
+      "(AWS terrain tiles + WorldClim bio), de-duplicated to 700 km spacing and capped per country. " +
+      "Climate and terrain are measured; the qualitative rows are proxies, so these sites are proposals to survey, not established analogs."
+    );
   }
 
   function selectSite(id, fly) {
@@ -264,9 +309,9 @@
 
   /* Kept for the flat Earth map, which uses DOM markers so the letter can be
      drawn inside the pin. */
-  function pinElement({ color, glow, selected, label, letter, onClick }) {
+  function pinElement({ color, glow, selected, label, letter, prospect, onClick }) {
     const node = document.createElement("div");
-    node.className = "rd-pin" + (selected ? " is-selected" : "");
+    node.className = "rd-pin" + (selected ? " is-selected" : "") + (prospect ? " is-prospect" : "");
     node.style.setProperty("--pin", color);
     node.style.setProperty("--pin-ink", selected ? SELECTED_PIN.ink : "#ffffff");
     node.style.setProperty("--pin-glow", glow || "rgba(93,220,201,0.55)");
@@ -687,13 +732,29 @@
 
     earthMap.on("click", (event) => {
       const nearest = R.nearestEarth(SITES.earth, event.latlng.lat, event.latlng.lng);
+      const screen = prospectScoreAt(event.latlng.lat, event.latlng.lng);
+      const screenLine =
+        screen == null
+          ? '<p class="mt-1 text-[11px] leading-relaxed text-muted">Not screened: ocean, ice or no data at this cell.</p>'
+          : '<p class="mt-1 text-[11px] leading-relaxed text-bone">Screen score <span class="tabular-nums">' +
+            fmt(screen, 1) + " / 100</span> " +
+            (screen >= 65
+              ? '<span class="text-ice">— inside the analog envelope</span>'
+              : '<span class="text-muted">— outside the analog envelope</span>') +
+            "</p>";
       if (nearest && nearest.km < 700) {
         selectSite(nearest.site.id);
-      } else {
-        $("#legend").innerHTML =
-          '<p class="eyebrow">Nearest analog</p><p class="mt-1 text-[11px] leading-relaxed text-muted">' +
-          (nearest ? nearest.site.name + " is " + fmt(nearest.km) + " km away." : "No analog nearby.") + "</p>";
+        return;
       }
+      $("#legend").innerHTML =
+        '<p class="eyebrow">Point query</p>' +
+        '<p class="mt-1 text-[11px] leading-relaxed text-muted">' +
+        fmt(Math.abs(event.latlng.lat), 2) + "° " + (event.latlng.lat >= 0 ? "N" : "S") + " · " +
+        fmt(Math.abs(event.latlng.lng), 2) + "° " + (event.latlng.lng >= 0 ? "E" : "W") + "</p>" +
+        screenLine +
+        '<p class="mt-1 text-[11px] leading-relaxed text-muted">' +
+        (nearest ? "Nearest catalogued analog: " + nearest.site.name + ", " + fmt(nearest.km) + " km." : "") +
+        "</p>";
     });
   }
 
@@ -825,7 +886,7 @@
 
   function applyEarthLayer() {
     if (!earthMap) return;
-    ["earth_temp", "earth_field"].forEach((key) => {
+    ["earth_temp", "earth_field", "earth_prospect"].forEach((key) => {
       if (earthLayers[key] && earthMap.hasLayer(earthLayers[key])) earthMap.removeLayer(earthLayers[key]);
     });
     earthLayers.earth_base.addTo(earthMap);
@@ -835,12 +896,85 @@
       if (active.kind === "temp") {
         earthLayers.earth_temp.addTo(earthMap);
         earthLayers.earth_temp.bringToFront();
+      } else if (active.kind === "raster") {
+        applyProspectLayer();
       } else if (active.kind === "suit" || active.kind === "twin") {
         refreshFieldLayer();
       }
     }
     applyLabels();
     renderEarthMarkers();
+  }
+
+  /* The screening raster ships as a grayscale PNG: the pixel value is the
+     screening score, 0 means "not screened". It is colourised once on the
+     client so it uses the same ramp as the interpolated fields. */
+  const prospectRaster = { url: null, image: null };
+
+  function colouriseProspect(image) {
+    const meta = window.RADIUM_PROSPECT_META;
+    const width = meta ? meta.width : image.width;
+    const height = meta ? meta.height : image.height;
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, 0, 0, width, height);
+    const pixels = ctx.getImageData(0, 0, width, height);
+    const data = pixels.data;
+    // Keep the raw score per cell before the pixels are replaced by colours.
+    const scores = new Uint8Array(width * height);
+    for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
+      const value = data[i];
+      scores[p] = value;
+      if (!value) {
+        data[i + 3] = 0;
+        continue;
+      }
+      const t = (value - 1) / 254;
+      const [r, g, b] = rampAt(t);
+      data[i] = r;
+      data[i + 1] = g;
+      data[i + 2] = b;
+      data[i + 3] = Math.round(20 + 150 * Math.min(1, t * 1.2));
+    }
+    ctx.putImageData(pixels, 0, 0);
+    prospectRaster.scores = scores;
+    prospectRaster.width = width;
+    prospectRaster.height = height;
+    return canvas.toDataURL("image/png");
+  }
+
+  /* Screen score at any coordinate, read straight out of the shipped raster so
+     the number always matches what the map is painting. */
+  function prospectScoreAt(lat, lon) {
+    if (!prospectRaster.scores) return null;
+    const col = Math.floor(((lon + 180) / 360) * prospectRaster.width) % prospectRaster.width;
+    const row = Math.floor(((90 - lat) / 180) * prospectRaster.height);
+    if (row < 0 || row >= prospectRaster.height) return null;
+    const value = prospectRaster.scores[row * prospectRaster.width + col];
+    return value ? Math.round(((value - 1) / 254) * 1000) / 10 : null;
+  }
+
+  function loadProspectRaster() {
+    if (prospectRaster.image) return;
+    const image = new Image();
+    image.onload = () => {
+      prospectRaster.image = image;
+      prospectRaster.url = colouriseProspect(image);
+      if (state.body === "earth" && state.layer.earth === "earth_prospect") applyEarthLayer();
+    };
+    image.src = "assets/grids/earth-prospect.png";
+  }
+
+  function applyProspectLayer() {
+    if (!earthMap || !prospectRaster.url) return;
+    earthLayers.earth_prospect = L.imageOverlay(prospectRaster.url, [[-90, -180], [90, 180]], {
+      opacity: 0.78,
+      interactive: false,
+      pane: "fieldPane"
+    }).addTo(earthMap);
+    earthLayers.earth_prospect.bringToFront();
   }
 
   function applyLabels() {
@@ -863,6 +997,7 @@
     });
 
     SITES.earth.forEach((site) => {
+      if (state.set === "discovered") return;
       const card = scoreFor(site);
       const isSelected = state.selected.earth === site.id;
       const color = isSelected ? selectedPinColor() : pinColor(card.letter);
@@ -905,6 +1040,39 @@
         }).addTo(earthMap);
         earthMarkers.push(halo);
       }
+    });
+
+    if (state.set !== "discovered") return;
+
+    /* Discovered candidates use the same teardrop inside a dashed ring so the
+       map reads "screened, not surveyed" at a glance. */
+    SITES.discovered.forEach((site, index) => {
+      const card = scoreFor(site);
+      const isSelected = state.selected.earth === site.id;
+      const color = isSelected ? selectedPinColor() : pinColor(card.letter);
+      const height = isSelected ? 40 : 30;
+      const width = isSelected ? 30 : 22;
+      const marker = L.marker([site.lat, site.lon], {
+        icon: L.divIcon({
+          className: "rd-pin-wrap",
+          html: pinElement({
+            color,
+            glow: hexToRgba(color, 0.5),
+            selected: isSelected,
+            letter: card.letter,
+            prospect: true,
+            label: site.name + " — screened grade " + card.letter
+          }).outerHTML,
+          iconSize: [width, height],
+          iconAnchor: [width / 2, height]
+        }),
+        keyboard: true,
+        title: site.name + " — screened grade " + card.letter,
+        riseOnHover: true,
+        zIndexOffset: -index * 4
+      }).addTo(earthMap);
+      marker.on("click", () => selectSite(site.id));
+      earthMarkers.push(marker);
     });
   }
 
@@ -964,6 +1132,16 @@
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
           (range ? fmt(range.lo, 0) + " pts" : "weak") + "</span><span>" +
           (range ? fmt(range.hi, 0) + " pts" : "strong") + "</span></div>";
+      } else if (active.kind === "raster") {
+        const meta = window.RADIUM_PROSPECT_META;
+        scale =
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaa8,#e9b244,#f7dbac)"></div>' +
+          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>0</span><span>100</span></div>' +
+          (meta
+            ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
+              meta.screenedCells.toLocaleString() +
+              " land cells screened · &lt;65 not shown</p>"
+            : "");
       } else if (active.kind === "twin") {
         const range = state.fieldRange && state.fieldRange.kind === "twin" ? state.fieldRange : null;
         scale = state.twinSource
@@ -1313,7 +1491,10 @@
         '<div class="mt-4" id="imagery-block">' +
           '<p class="eyebrow">Street view</p>' +
           '<p class="mt-1.5 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-[11px] leading-relaxed text-muted">' +
-            "No verifiable open-licence photography of this site was found, so nothing is shown here rather than a guess. Use Google pano, Maps, or Worldview above.</p>" +
+            (site.prospect
+              ? "A discovered candidate has no photo archive to draw on, so no imagery is invented here. Open Google pano, Maps or Worldview above to look at the ground yourself."
+              : "No verifiable open-licence photography of this site was found, so nothing is shown here rather than a guess. Use Google pano, Maps, or Worldview above.") +
+            "</p>" +
         "</div>"
       );
     }
@@ -1375,12 +1556,18 @@
 
     const card = scoreFor(site);
     const rows = MEASUREMENTS[site.body](site);
+    // For discovered candidates these rubric rows come from proxies, so they
+    // carry an asterisk rather than pretending to be measurements.
+    const estimatedRows = site.prospect
+      ? new Set(["geology", "resources", "processes", "habitability", "subsurface"])
+      : new Set();
     const rubric = R.RUBRIC.map((r) => {
       const value = card.dims[r.key];
       const color = value >= 74 ? "var(--grade-a)" : value >= 54 ? "var(--grade-c)" : "var(--grade-e)";
       return (
         '<div class="flex items-center gap-2">' +
-          '<span class="w-[86px] shrink-0 text-[10px] uppercase tracking-wider text-muted">' + r.short + "</span>" +
+          '<span class="w-[86px] shrink-0 text-[10px] uppercase tracking-wider text-muted">' +
+            r.short + (estimatedRows.has(r.key) ? '<span class="text-ice/80">*</span>' : "") + "</span>" +
           '<span class="bar flex-1"><span style="width:' + fmt(value, 0) + "%;background:" + color + '"></span></span>' +
           '<span class="w-7 text-right text-[11px] tabular-nums text-muted">' + fmt(value, 0) + "</span>" +
         "</div>"
@@ -1404,7 +1591,8 @@
             ";--grade-tint:" + hexToRgba(neonColor(card.letter), 0.1) +
             '">' + card.letter + "</span>" +
           '<div class="min-w-0">' +
-            '<p class="eyebrow">' + BODY_META[site.body].label + " · " + fmt(card.value, 1) + " / 100</p>" +
+            '<p class="eyebrow">' + BODY_META[site.body].label +
+              (site.prospect ? " · discovered" : "") + " · " + fmt(card.value, 1) + " / 100</p>" +
             '<h2 class="mt-1 font-display text-[1.55rem] leading-tight">' + site.name + "</h2>" +
             '<p class="mt-1 text-[11px] text-muted">' + site.region + "</p>" +
           "</div>" +
@@ -1413,10 +1601,15 @@
           '<span class="chip">' + fmt(Math.abs(site.lat), 2) + "° " + (site.lat >= 0 ? "N" : "S") + "</span>" +
           '<span class="chip">' + fmt(Math.abs(site.lon), 2) + "° " + (site.lon >= 0 ? "E" : "W") + "</span>" +
           (site.confidence ? '<span class="chip">' + site.confidence + " confidence</span>" : "") +
+          (site.prospect
+            ? '<span class="chip border-ice/40 bg-ice/[0.10] text-ice">screen ' +
+              fmt(site.screenScore, 1) + " / 100</span>"
+            : "") +
         "</div>" +
         quickActions(site) +
         '<div class="mt-3 grid grid-cols-2 gap-1.5">' + measurements + "</div>" +
         '<div class="mt-4"><p class="eyebrow">Rubric sub-scores</p><div class="mt-2 space-y-1.5">' + rubric + "</div></div>" +
+        (site.prospect ? prospectBlock(site) : "") +
         (site.analog
           ? '<div class="mt-4 rounded-xl border border-amber/20 bg-amber/[0.06] p-3">' +
               '<p class="eyebrow text-amber/80">Why it is analogous</p>' +
@@ -1429,6 +1622,41 @@
         '<a class="mt-4 inline-flex items-center gap-1 text-[11px] text-ice underline decoration-ice/40 underline-offset-4 hover:decoration-ice" href="' +
           site.source.url + '" target="_blank" rel="noopener noreferrer">' + site.source.label + " ↗</a>" +
       "</div>";
+  }
+
+  /* Why a discovered candidate is worth looking at, and what is still missing. */
+  function prospectBlock(site) {
+    const settlement = site.settlement || {};
+    const neighbour = site.nearestAnalog || {};
+    const link = (id, label) => {
+      const match = SITES.earth.find((s) => s.id === id);
+      return match ? '<button type="button" class="text-ice underline decoration-ice/40 underline-offset-2 hover:decoration-ice" data-goto-site="' + id + '">' + label + "</button>" : label;
+    };
+    return (
+      '<div class="mt-4 rounded-xl border border-ice/25 bg-ice/[0.06] p-3">' +
+        '<p class="eyebrow text-ice/80">How this was found</p>' +
+        '<p class="mt-1 text-[11px] leading-relaxed text-bone/85">' +
+          "Not in any analog catalogue. The global scan (AWS terrain tiles + WorldClim 2.1) scored " +
+          "this cell " + fmt(site.screenScore, 1) + " / 100 against the measured envelope of the " +
+          "40 curated analogs, then NASA POWER and ETOPO1 were queried here for the exact numbers above." +
+        "</p>" +
+        '<div class="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">' +
+          '<div class="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">' +
+            '<p class="text-[10px] uppercase tracking-wider text-muted">Nearest analog</p>' +
+            '<p class="mt-0.5 text-bone">' + link(neighbour.id, neighbour.name || "—") + "</p>" +
+            '<p class="text-[10px] text-muted">' + fmt(neighbour.km, 0) + " km away</p>" +
+          "</div>" +
+          '<div class="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">' +
+            '<p class="text-[10px] uppercase tracking-wider text-muted">Nearest settlement</p>' +
+            '<p class="mt-0.5 text-bone">' + (settlement.name || "—") + "</p>" +
+            '<p class="text-[10px] text-muted">' + fmt(settlement.km, 0) + " km " + (settlement.bearing || "") + " · logistics</p>" +
+          "</div>" +
+        "</div>" +
+        '<p class="mt-2 text-[10px] leading-relaxed text-muted/85">' +
+          "Rows marked * are data-derived proxies, not field observations." +
+        "</p>" +
+      "</div>"
+    );
   }
 
   function twinBlock(site) {
@@ -1552,7 +1780,11 @@
       ["Earth temperature field", "IDW of 40 NASA POWER climatologies, masked to 2,500 km", "https://power.larc.nasa.gov/"],
       ["Blue Marble shaded relief", "NASA GIBS (live tiles + cached fallback)", "https://worldview.earthdata.nasa.gov/"],
       ["High-resolution imagery + boundaries", "Esri World Imagery and World Boundaries and Places", "https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9"],
-      ["LROC mosaic with polar fill", "NASA SVS LROC colour poles, blended with the LRO WAC mosaic", "https://svs.gsfc.nasa.gov/4720"]
+      ["LROC mosaic with polar fill", "NASA SVS LROC colour poles, blended with the LRO WAC mosaic", "https://svs.gsfc.nasa.gov/4720"],
+      ["AWS Terrain Tiles (Mapzen terrarium)", "SRTM / NED / GMTED / ETOPO blend; elevation, slope and relief for the global scan", "https://registry.opendata.aws/terrain-tiles/"],
+      ["WorldClim 2.1 bio (10 arc-minute)", "Mean/max/min temperature and precipitation for the global scan", "https://www.worldclim.org/data/worldclim21.html"],
+      ["Natural Earth 50m land, glaciers, lakes, countries", "Screening masks and candidate country labels", "https://www.naturalearthdata.com/"],
+      ["Natural Earth 10m populated places", "Nearest settlement used to name each discovered candidate", "https://www.naturalearthdata.com/downloads/10m-cultural-vectors/"]
     ];
 
     $("#sources-body").innerHTML =
@@ -1561,6 +1793,7 @@
         "<li><strong class=\"text-bone\">Measured rasters</strong> — the switchable globe/map layers are NASA products rendered from real mission data.</li>" +
         "<li><strong class=\"text-bone\">Computed point values</strong> — every Earth pin's temperature, pressure, solar, slope and roughness is calculated from POWER + ETOPO1 by <code>tools/fetch_earth_data.py</code>.</li>" +
         "<li><strong class=\"text-bone\">Compiled estimates</strong> — Moon/Mars site metrics (and the ice/dust/subsurface indices) are literature-derived with a confidence tag and a citation on each dossier.</li>" +
+        "<li><strong class=\"text-bone\">Screening output</strong> — the Discovered shortlist comes from scoring 224,663 quarter-degree land cells against the measured envelope of the curated analogs (<code>tools/build_prospect_scan.py</code>). Climate and terrain are measured; ice, dust, subsurface, biosignature and science rows are proxies, and the site is a proposal to survey.</li>" +
       "</ol>" +
       '<p class="mt-3 text-[12px] leading-relaxed text-muted">Scoring is deliberately explainable: each of the eight rubric rows is a closed-form function of a measurement (see <code>assets/scoring.js</code>), and the mission designer only changes the weights.</p>' +
       '<table class="mt-4 w-full text-left text-[12px]"><thead><tr class="text-[10px] uppercase tracking-wider text-muted">' +
@@ -1576,6 +1809,24 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
+    const setBtn = event.target.closest("[data-set]");
+    if (setBtn) {      if (state.set !== setBtn.dataset.set) {
+        state.set = setBtn.dataset.set;
+        const top = sortedSites("earth")[0];
+        state.selected.earth = top ? top.site.id : null;
+        renderRail();
+        renderDetail();
+        renderEarthMarkers();
+      }
+      return;
+    }
+    const gotoBtn = event.target.closest("[data-goto-site]");
+    if (gotoBtn) {
+      state.set = "curated";
+      selectSite(gotoBtn.dataset.gotoSite, false);
+      renderEarthMarkers();
+      return;
+    }
     const galleryOpen = event.target.closest("[data-gallery-open]");
     if (galleryOpen) {
       const site = Object.values(SITES).flat().find((s) => s.id === galleryOpen.dataset.galleryOpen);
@@ -1673,17 +1924,22 @@
       if (target && target.body !== "earth") state.twinSource = target;
     }
     setBody(bodyKey);
-    if (targetId && SITES[bodyKey].some((s) => s.id === targetId)) {
+    const inCurated = (SITES[bodyKey] || []).some((s) => s.id === targetId);
+    const inDiscovered = bodyKey === "earth" && SITES.discovered.some((s) => s.id === targetId);
+    if (inDiscovered) state.set = "discovered";
+    if (inCurated || inDiscovered) {
       selectSite(targetId, false);
+      if (bodyKey === "earth") renderEarthMarkers();
     }
     const zoom = Number(zoomRaw);
     if (bodyKey === "earth" && Number.isFinite(zoom) && zoom > 0) {
-      const site = SITES.earth.find((s) => s.id === targetId);
+      const site = activeSites().find((s) => s.id === targetId);
       if (site && earthMap) earthMap.setView([site.lat, site.lon], zoom);
     }
     return true;
   }
 
+  loadProspectRaster();
   if (!applyHash()) setBody("moon");
   if (state.body === "earth" && state.twinSource && !state.selected.earth) {
     const best = R.topTwins(SITES.earth, state.twinSource, 1)[0];

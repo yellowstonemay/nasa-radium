@@ -175,7 +175,33 @@
       })
       .filter(Boolean);
 
-    return { moon, mars, earth };
+    return { moon, mars, earth, discovered: buildProspects() };
+  }
+
+  /* Discovered candidates come from the global screen
+     (tools/build_prospect_scan.py). They already carry measured POWER/ETOPO1
+     metrics, so they go through the same eight-row rubric as the curated sites;
+     `prospect` and `estimated` mark which fields are proxies rather than
+     published observations. */
+  function buildProspects() {
+    return (window.RADIUM_PROSPECT_SITES || []).map((p) =>
+      withDims(
+        "earth",
+        Object.assign({}, p, {
+          tempDayC: p.tempMaxC,
+          tempNightC: p.tempMinC,
+          pressurePa: (p.pressureKPa || 0) * 1000,
+          solarKwh: p.solarKwhM2Day,
+          iceDistanceKm: 0,
+          windMs: p.windMs,
+          humidityPct: p.humidityPct,
+          precipMmDay: p.precipMmDay,
+          elevationSamples: p.elevSamplesM || [],
+          illuminationPct: 0,
+          earthVisibilityPct: 100
+        })
+      )
+    );
   }
 
   function nearestEarth(earthSites, lat, lon) {
