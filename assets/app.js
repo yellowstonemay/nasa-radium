@@ -299,12 +299,7 @@
     renderRail();
     renderDetail();
     if (globe) {
-      globe.ringsData([{ lat, lng: lon }]);
-      globe
-        .ringColor(() => (t) => "rgba(99,224,206," + (1 - t) * 0.9 + ")")
-        .ringMaxRadius(5)
-        .ringPropagationSpeed(2.2)
-        .ringRepeatPeriod(1200);
+      updateRings();
       globe.pointOfView({ lat: lat * 0.9, lng: lon, altitude: stageAltitude() }, 700);
     }
   }
@@ -336,8 +331,9 @@
       .showAtmosphere(true)
       .atmosphereColor("#9fc4ff")
       .atmosphereAltitude(0.17)
-      .pointAltitude(0.008)
+      .pointAltitude((d) => d.alt)
       .pointRadius((d) => d.radius)
+      .pointResolution(24)
       .pointColor((d) => d.color)
       .pointLabel(
         (d) =>
@@ -355,6 +351,7 @@
     controls.minDistance = 140;
     controls.maxDistance = 680;
     controls.autoRotateSpeed = 0.35;
+    controls.addEventListener("change", schedulePinScale);
 
     const resize = () => {
       const rect = host.getBoundingClientRect();
@@ -372,25 +369,69 @@
     globe.globeImageUrl("assets/textures/" + state.layer[state.body] + ".jpg");
   }
 
+  let pinScale = 2;
+  let pinScaleTimer = null;
+
+  function updatePinScale() {
+    if (!globe) return;
+    const altitude = (globe.pointOfView() || {}).altitude || 2.2;
+    pinScale = 0.8 + altitude * 0.55;
+    globe.pointRadius((d) => d.radius * pinScale);
+    globe.ringMaxRadius((d) => (d.selected ? 5 : 2.6) * (pinScale / 2));
+  }
+
+  function schedulePinScale() {
+    if (pinScaleTimer) clearTimeout(pinScaleTimer);
+    pinScaleTimer = setTimeout(updatePinScale, 120);
+  }
+
   function renderGlobePoints() {
     if (!globe) return;
+    const selectedId = state.selected[state.body];
+    const rank = new Map(sortedSites(state.body).map((row, index) => [row.site.id, index]));
     const points = activeSites().map((site) => {
       const card = scoreFor(site);
+      const isSelected = site.id === selectedId;
       return {
         id: site.id,
         name: site.name,
         region: site.region,
         lat: site.lat,
         lng: site.lon,
-        color: GRADE_COLOR[card.letter],
-        radius: state.selected[state.body] === site.id ? 0.95 : 0.5,
-        alt: 0.004 + (card.value / 100) * 0.02
+        color: isSelected ? "#fff3d6" : GRADE_COLOR[card.letter],
+        radius: isSelected ? 1.25 : 0.9,
+        // Rank-staggered height keeps polar pins from collapsing into one blob.
+        alt: isSelected ? 0.05 : 0.014 + (rank.get(site.id) || 0) * 0.005 + (card.value / 100) * 0.012
       };
     });
     globe.pointsData(points);
+    updatePinScale();
+    updateRings();
+  }
 
-    const current = selectedSite();
-    globe.ringsData(current ? [{ lat: current.lat, lng: current.lon }] : []);
+  function updateRings() {
+    if (!globe) return;
+    const selectedId = state.selected[state.body];
+    const rings = activeSites().map((site) => ({
+      lat: site.lat,
+      lng: site.lon,
+      selected: site.id === selectedId
+    }));
+    if (state.point) {
+      rings.push({ lat: state.point.conditions.lat, lng: state.point.conditions.lon, selected: true, query: true });
+    }
+    globe
+      .ringsData(rings)
+      .ringColor((d) => (t) =>
+        d.query
+          ? "rgba(99,224,206," + (1 - t) * 0.9 + ")"
+          : d.selected
+          ? "rgba(245,166,35," + (1 - t) * 0.85 + ")"
+          : "rgba(236,230,216," + (1 - t) * 0.32 + ")"
+      )
+      .ringMaxRadius((d) => (d.selected ? 5 : 2.6))
+      .ringPropagationSpeed(1.8)
+      .ringRepeatPeriod((d) => (d.selected ? 900 : 2200));
   }
 
   function stageAltitude() {
