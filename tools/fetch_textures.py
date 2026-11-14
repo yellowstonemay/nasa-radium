@@ -30,8 +30,7 @@ TREK = "https://trek.nasa.gov/tiles/{body}/EQ/{layer}/1.0.0/default/default028mm
 
 # layer key -> (body, Trek layer id, label)
 TREK_LAYERS = {
-    "moon_base": ("Moon", "LRO_WAC_Mosaic_Global_303ppd_v02", "LRO WAC global mosaic"),
-    "moon_day": ("Moon", "LRO_Diviner_ST_Avg_Clr_Global_32ppd", "Diviner average daytime surface temperature"),
+    "moon_base": ("Moon", "LRO_WAC_Mosaic_Global_303ppd_v02", "LRO WAC global mosaic"),    "moon_day": ("Moon", "LRO_Diviner_ST_Avg_Clr_Global_32ppd", "Diviner average daytime surface temperature"),
     "moon_night": ("Moon", "LRO_Diviner_STN_Avg_Clr_Global_32ppd", "Diviner average nighttime surface temperature"),
     "moon_slope": ("Moon", "LRO_LOLA_ClrSlope_Global_16ppd", "LOLA slope"),
     "moon_rough": ("Moon", "LRO_LOLA_ClrRoughness_Global_16ppd", "LOLA roughness"),

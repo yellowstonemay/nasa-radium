@@ -33,11 +33,13 @@ python tools\build_earth_layers.py  # Earth temperature field + night-lights pro
 python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
 python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
 python tools\build_site_thumbs.py   # Moon/Mars surface crops for each pin
+python tools\merge_moon_texture.py  # blends WAC detail with the polar-filled texture
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 ```
 
 Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
-for that Moon site; `#earth:earth_suit` opens the analog-grade field; `#mars` opens Mars.
+for that Moon site; `#earth:earth_suit` opens the analog-grade field; `#mars` opens Mars; and
+`#earth:earth_base:craters-of-the-moon:15` jumps straight to a site at zoom 15.
 
 Screenshots: `node screenshot.mjs http://localhost:3000 [label]` (needs Puppeteer; set
 `PUPPETEER_PATH` if it is installed outside this repo).
@@ -51,11 +53,12 @@ which is which.
 
 | Layer | Product | Source |
 | --- | --- | --- |
-| Moon base | LRO WAC global mosaic, 303 ppd | [Moon Trek](https://trek.nasa.gov/moon/) |
+| Moon base | LRO WAC global mosaic (303 ppd) blended with NASA SVS LROC colour-poles texture above 66 deg | [Moon Trek](https://trek.nasa.gov/moon/) · [SVS](https://svs.gsfc.nasa.gov/4720) |
 | Moon day / night temp | Diviner average surface temperature, 32 ppd | [Moon Trek](https://trek.nasa.gov/moon/) · [PDS Diviner](https://pds-geosciences.wustl.edu/missions/lro/diviner.htm) |
 | Mars base | MGS MOLA colour shaded relief, 463 m | [Mars Trek](https://trek.nasa.gov/mars/) · [PDS MRO](https://pds-geosciences.wustl.edu/missions/mro/) |
 | Mars colour | Viking MDIM 2.1 mosaic, 232 m | [Mars Trek](https://trek.nasa.gov/mars/) · [USGS Astrogeology](https://astrogeology.usgs.gov/) |
-| Earth base | Blue Marble + bathymetry | [NASA GIBS](https://gibs.earthdata.nasa.gov/) (live tiles + cached fallback) |
+| Earth base | High-resolution satellite imagery (Esri World Imagery) over a cached Blue Marble fallback, zoomable to level 17 | [Esri](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) |
+| Earth boundaries | Country borders, place and water labels | Esri World Boundaries and Places |
 | Earth surface temperature | **computed** IDW of the 40 NASA POWER climatologies, faded beyond 2,500 km | [NASA POWER](https://power.larc.nasa.gov/) |
 | Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
