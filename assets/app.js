@@ -4,10 +4,17 @@
 
   const R = window.RADIUM;
   const SITES = R.buildSites();
+  /* Deep, saturated grade palette: readable white letters on every pin, and
+     distinct enough from each other on both grey lunar mosaic and Mars relief. */
   const GRADE_COLOR = {
-    A: "#6fe7b0", B: "#b9e36b", C: "#f5c451",
-    D: "#f09a4c", E: "#de6a45", F: "#c0443c"
+    A: "#15803d", // deep green
+    B: "#4d7c0f", // dark olive
+    C: "#b45309", // dark amber
+    D: "#c2410c", // dark orange
+    E: "#b91c1c", // dark red
+    F: "#7f1d1d"  // deepest red
   };
+  const SELECTED_PIN = { fill: "#5ddcc9", ink: "#06302b" };
   const BODY_META = {
     moon: {
       label: "Moon", title: "Lunar base suitability", note:
@@ -201,8 +208,8 @@
       btn.type = "button";
       btn.setAttribute("aria-current", String(state.selected[state.body] === site.id));
       btn.innerHTML =
-        '<span class="grade" style="color:' + GRADE_COLOR[card.letter] + ';background:' +
-        GRADE_COLOR[card.letter] + '14">' + card.letter + "</span>" +
+        '<span class="grade" style="color:#fff;background:' +
+        GRADE_COLOR[card.letter] + '">' + card.letter + "</span>" +
         '<span class="min-w-0 flex-1">' +
           '<span class="block truncate text-[13px] text-bone">' + site.name + "</span>" +
           '<span class="mt-0.5 block truncate text-[11px] text-muted">' + site.region + "</span>" +
@@ -231,18 +238,22 @@
     '<svg viewBox="0 0 32 44" aria-hidden="true">' +
       '<path d="M16 42.4C16 42.4 3.1 27 3.1 16A12.9 12.9 0 0 1 28.9 16c0 11-12.9 26.4-12.9 26.4Z" ' +
         'fill="var(--pin)" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round"/>' +
-      '<circle cx="16" cy="15.8" r="5.1" fill="#ffffff" fill-opacity="0.96"/>' +
-      '<circle cx="16" cy="15.8" r="2.2" fill="var(--pin-core)" fill-opacity="0.92"/>' +
+      '<circle cx="16" cy="15.8" r="9.4" fill="rgba(255,255,255,0.10)"/>' +
+      '<text x="16" y="16.4" text-anchor="middle" dominant-baseline="central" ' +
+        'font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="14.5" font-weight="700" ' +
+        'letter-spacing="0.2" fill="var(--pin-ink)">__LETTER__</text>' +
     "</svg>";
 
-  function pinElement({ color, glow, selected, query, label, onClick }) {
+  function pinElement({ color, glow, selected, query, label, letter, dx, onClick }) {
     const node = document.createElement("div");
     node.className = "rd-pin" + (selected ? " is-selected" : "") + (query ? " is-query" : "");
     node.style.setProperty("--pin", color);
-    node.style.setProperty("--pin-core", shade(color, -0.45));
-    node.style.setProperty("--pin-glow", glow || "rgba(99,224,206,0.55)");
-    node.innerHTML = PIN_SVG;
-    node.setAttribute("aria-hidden", "true");
+    node.style.setProperty("--pin-ink", selected ? SELECTED_PIN.ink : "#ffffff");
+    node.style.setProperty("--pin-glow", glow || "rgba(93,220,201,0.55)");
+    if (dx) node.style.setProperty("--pin-dx", dx + "px");
+    node.innerHTML = PIN_SVG.replace("__LETTER__", letter || "?");
+    node.setAttribute("role", "img");
+    node.setAttribute("aria-label", label || "");
     if (label) node.title = label;
     if (onClick) {
       node.addEventListener("click", (event) => {
@@ -272,11 +283,11 @@
   }
 
   function pinColor(letter) {
-    return GRADE_COLOR[letter] || "#63e0ce";
+    return GRADE_COLOR[letter] || GRADE_COLOR.C;
   }
 
   function selectedPinColor() {
-    return "#63e0ce";
+    return SELECTED_PIN.fill;
   }
 
   /* Hide pins on the far hemisphere: a surface point is visible while its
@@ -499,10 +510,38 @@
         lng: site.lon,
         isSelected,
         color,
-        glow: hexToRgba(color, 0.6),
+        glow: hexToRgba(color, 0.55),
+        letter: card.letter,
+        alt: 0.006,
         label: site.name + " — grade " + card.letter + " (" + fmt(card.value, 1) + ")"
       };
     });
+
+    // Polar sites sit within a fraction of a degree of each other. Stack them in
+    // slight elevation steps, fan them out a few pixels, and paint the selected
+    // pin last so the letters stay readable.
+    const CLUSTER_DEG = 1.6;
+    const nearby = (a, b) =>
+      Math.abs(a.lat - b.lat) < CLUSTER_DEG && Math.abs(a.lng - b.lng) < CLUSTER_DEG / Math.cos((a.lat * Math.PI) / 180) + CLUSTER_DEG;
+
+    const ordered = data.slice().sort((a, b) => a.lat - b.lat || a.lng - b.lng);
+    ordered.forEach((d, i) => {
+      const group = ordered.filter((other) => other !== d && nearby(d, other));
+      if (!group.length) return;
+      const members = [d].concat(group).sort((a, b) => a.lng - b.lng || a.lat - b.lat);
+      const index = members.indexOf(d);
+      const spread = 23;
+      d.dx = Math.round((index - (members.length - 1) / 2) * spread);
+      d.alt = 0.004 + index * 0.0016;
+    });
+
+    data.sort((a, b) => {
+      if (a.isSelected) return 1;
+      if (b.isSelected) return -1;
+      return 0;
+    });
+    const selectedData = data.find((d) => d.isSelected);
+    if (selectedData) selectedData.alt = 0.03;
 
     if (state.point && state.point.body === state.body) {
       data.push({
@@ -510,15 +549,17 @@
         lat: state.point.conditions.lat,
         lng: state.point.conditions.lon,
         isQuery: true,
-        color: "#63e0ce",
-        glow: "rgba(99,224,206,0.7)",
+        color: "#0d5f57",
+        glow: "rgba(93,220,201,0.65)",
+        letter: "\u25c9",
+        alt: 0.03,
         label: "Query point"
       });
     }
 
     globe
       .htmlElementsData(data)
-      .htmlAltitude(0.008)
+      .htmlAltitude((d) => d.alt)
       .htmlTransitionDuration(0)
       .htmlElement((d) =>
         pinElement({
@@ -526,7 +567,9 @@
           glow: d.glow,
           selected: d.isSelected,
           query: d.isQuery,
+          letter: d.letter,
           label: d.label,
+          dx: d.dx,
           onClick: d.isQuery ? null : () => selectSite(d.id)
         })
       )
@@ -806,8 +849,9 @@
           className: "rd-pin-wrap",
           html: pinElement({
             color,
-            glow: hexToRgba(color, 0.6),
+            glow: hexToRgba(color, 0.55),
             selected: isSelected,
+            letter: card.letter,
             label: site.name + " — grade " + card.letter
           }).outerHTML,
           iconSize: [width, height],
@@ -1181,8 +1225,8 @@
     host.innerHTML =
       '<div class="fade-in">' +
         '<div class="flex items-start gap-3">' +
-          '<span class="grade shrink-0" style="width:3rem;height:3rem;font-size:1.3rem;border-radius:14px;color:' +
-            GRADE_COLOR[card.letter] + ";background:" + GRADE_COLOR[card.letter] + '16">' + card.letter + "</span>" +
+          '<span class="grade shrink-0" style="width:3rem;height:3rem;font-size:1.3rem;border-radius:14px;' +
+            "color:#fff;background:" + GRADE_COLOR[card.letter] + '">' + card.letter + "</span>" +
           '<div class="min-w-0">' +
             '<p class="eyebrow">' + BODY_META[site.body].label + " · " + fmt(card.value, 1) + " / 100</p>" +
             '<h2 class="mt-1 font-display text-[1.55rem] leading-tight">' + site.name + "</h2>" +

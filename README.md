@@ -66,11 +66,14 @@ which is which.
 ### Map pins
 
 Pins are teardrop markers rendered as DOM elements (globe) and Leaflet div-icons (map), so the same
-shape and styling applies to both. They have a white ring, a coloured core, a soft glow and a drop
-shadow, which keeps them readable on both the grey lunar mosaic and bright Mars relief. The
-selected pin switches to RADIUM's teal accent, grows slightly and gains a pulsing halo; pins on the
-far hemisphere of the globe are hidden using a horizon-angle test. On Earth the selected site also
-shows a dashed radius ring that shrinks from 120 km to 2.5 km as you zoom in.
+shape and styling applies to both. Each pin carries its **letter grade** in white on a deep,
+saturated fill — green (A), olive (B), amber (C), orange (D), red (E), deepest red (F) — with a
+white ring, soft glow and drop shadow so they stay readable on both the grey lunar mosaic and the
+bright Mars relief. Pins that sit within ~1.6° of each other are fanned out a few pixels and stacked
+in elevation so their letters do not cover one another, and hovering raises one above the rest.
+The selected pin switches to RADIUM's teal accent, grows slightly and gains a pulsing halo; pins on
+the far hemisphere of the globe are hidden using a horizon-angle test. On Earth the selected site
+also shows a dashed radius ring that shrinks from 120 km to 2.5 km as you zoom in.
 
 ### Site imagery (real, never generated)
 
