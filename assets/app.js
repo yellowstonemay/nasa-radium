@@ -261,7 +261,6 @@
     node.style.setProperty("--pin", color);
     node.style.setProperty("--pin-ink", selected ? SELECTED_PIN.ink : "#ffffff");
     node.style.setProperty("--pin-glow", glow || "rgba(93,220,201,0.55)");
-    if (dx) node.style.setProperty("--pin-dx", dx + "px");
     node.innerHTML = PIN_SVG.replace("__LETTER__", letter || "?");
     node.setAttribute("role", "button");
     node.setAttribute("tabindex", "0");
