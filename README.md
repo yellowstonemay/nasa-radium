@@ -95,8 +95,11 @@ thumbnail). The viewer shows the full frame with a type badge (`ground view` vs 
 previous/next arrows, a thumbnail strip, per-image credit and licence, and ←/→ keyboard support.
 A "Google pano ↗" button is still there for the minority of sites where Google has a panorama.
 
-Coverage: **40/40 sites have imagery, 192 ground photographs** across the catalogue
-(38 sites have 3–6 photos; only Bunger Hills and Mistastin are sparse).
+Coverage: **39/40 sites have imagery, 186 ground photographs** across the catalogue
+(37 sites have 3–6 photos; Bunger Hills and Mistastin are sparse). University Valley has no
+verifiable open-licence photography — Commons text search only returned unrelated *Valley …
+University* campuses — so it is intentionally blank rather than showing the wrong place. The
+pipeline now skips it and rejects blank polar satellite mosaics.
 
 `tools/fetch_site_photos.py` downloads mosaics and photos into `assets/photos/` with a manifest of
 authors and licences, so the demo works offline. Candidate selection matters more than volume:
@@ -104,6 +107,8 @@ authors and licences, so the demo works offline. Candidate selection matters mor
 - photos come from Commons **categories** for the place first, then geosearch within 10 km, then text search;
 - facilities (housing, roads, signage, museums), flora/fauna close-ups and scanned archival photos are
   filtered or down-ranked, as are *Flora of…* / *Fauna of…* categories;
+- institutional words (*university*, *college*, *campus*) are blocked, and sites in `NO_PHOTO_SITES`
+  are skipped outright — no imagery beats imagery of the wrong place;
 - if a site has three or more terrain-titled photos, non-terrain photos are dropped entirely;
 - repeated subjects are collapsed, with a second pass only for sparse sites;
 - orbital images are detected and labelled instead of masquerading as ground views.

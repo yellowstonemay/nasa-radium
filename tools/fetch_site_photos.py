@@ -99,7 +99,14 @@ TITLE_BLOCKLIST = (
     "apartment", "barracks", "headquarters", "kiosk", "toilet", "restroom",
     "picnic", "bench", "fence", "gate", "exhibit", "display", "interior",
     "room", "kitchen", "office", "warehouse", "hangar", "garage",
+    # Institutional names collide with place names: "University Valley" matched
+    # Valley City State University, i.e. a campus 15,000 km away.
+    "university", "college", "campus", "academy", "institute",
 )
+
+# Sites where no verifiable open-licence photograph exists. Guessing produces
+# imagery of the wrong place, which is worse than an empty gallery.
+NO_PHOTO_SITES = {"university-valley"}
 
 # Close-ups of plants or animals show the biosphere, not the terrain analog.
 SUBJECT_PENALTIES = (
@@ -195,6 +202,12 @@ def build_satellite(site: dict) -> bool:
         ok += 1
 
     if ok < 3:
+        return False
+    # Sentinel-2's cloudless mosaic has no coverage at extreme polar latitudes
+    # and returns blank white tiles; a flat image is not worth shipping.
+    small = canvas.resize((32, 32))
+    grey = small.convert("L")
+    if grey.getextrema()[0] > 235 or grey.getextrema()[1] < 12:
         return False
     canvas.save(OUT / f"{site['id']}-sat.jpg", quality=88, optimize=True)
     return True
@@ -425,6 +438,9 @@ def main() -> int:
     manifest: dict[str, dict] = {}
 
     def handle(site):
+        if site["id"] in NO_PHOTO_SITES:
+            print(f"  skip {site['id']}: no verifiable open photography")
+            return site["id"], {"photos": [], "satellite": None, "photoSource": "none"}
         radius = RADIUS_KM.get(site["id"], 10)
         entry = {"photos": [], "satellite": None}
         if build_satellite(site):
@@ -506,7 +522,10 @@ def main() -> int:
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         for site_id, entry in pool.map(handle, sites):
-            manifest[site_id] = entry
+            # Sites with nothing verifiable are omitted entirely so the app can
+            # show its "no imagery" state instead of a wrong picture.
+            if entry["photos"] or entry["satellite"]:
+                manifest[site_id] = entry
 
     payload = "window.RADIUM_PHOTOS = " + json.dumps(manifest, indent=1) + ";\n"
     META.write_text(payload, encoding="utf-8")

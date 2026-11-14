@@ -1,4 +1,4 @@
-window.RADIUM_PHOTOS = {
+﻿window.RADIUM_PHOTOS = {
  "yungay": {
   "photos": [
    {
@@ -81,70 +81,6 @@ window.RADIUM_PHOTOS = {
    "url": "https://s2maps.eu"
   },
   "photoSource": "geo+category"
- },
- "university-valley": {
-  "photos": [
-   {
-    "file": "assets/photos/university-valley-1.jpg",
-    "title": "Valley City State University, Charlotte Graichen Gymnasium.jpg",
-    "author": "Richard N Horne",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
-    "page": "https://commons.wikimedia.org/wiki/File:Valley_City_State_University,_Charlotte_Graichen_Gymnasium.jpg",
-    "kind": "Ground view"
-   },
-   {
-    "file": "assets/photos/university-valley-2.jpg",
-    "title": "Grand Valley State University ASB Group (8532205392).jpg",
-    "author": "Virginia State Parks staff",
-    "license": "CC BY 2.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by/2.0",
-    "page": "https://commons.wikimedia.org/wiki/File:Grand_Valley_State_University_ASB_Group_(8532205392).jpg",
-    "kind": "Ground view"
-   },
-   {
-    "file": "assets/photos/university-valley-3.jpg",
-    "title": "Mississippi Valley State University water tower.jpg",
-    "author": "Chillin662",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
-    "page": "https://commons.wikimedia.org/wiki/File:Mississippi_Valley_State_University_water_tower.jpg",
-    "kind": "Ground view"
-   },
-   {
-    "file": "assets/photos/university-valley-4.jpg",
-    "title": "Valley City State University, McFarland Hall 1892.jpg",
-    "author": "Richard N Horne",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
-    "page": "https://commons.wikimedia.org/wiki/File:Valley_City_State_University,_McFarland_Hall_1892.jpg",
-    "kind": "Ground view"
-   },
-   {
-    "file": "assets/photos/university-valley-5.jpg",
-    "title": "Valley City State University, the gazebo.jpg",
-    "author": "Richard N Horne",
-    "license": "CC BY-SA 4.0",
-    "licenseUrl": "https://creativecommons.org/licenses/by-sa/4.0",
-    "page": "https://commons.wikimedia.org/wiki/File:Valley_City_State_University,_the_gazebo.jpg",
-    "kind": "Ground view"
-   },
-   {
-    "file": "assets/photos/university-valley-6.jpg",
-    "title": "Agriculture Secretary Perdue at Fort Valley State University (20190405-OSEC-LSC-0002).jpg",
-    "author": "USDAgov",
-    "license": "Public domain",
-    "licenseUrl": "",
-    "page": "https://commons.wikimedia.org/wiki/File:Agriculture_Secretary_Perdue_at_Fort_Valley_State_University_(20190405-OSEC-LSC-0002).jpg",
-    "kind": "Ground view"
-   }
-  ],
-  "satellite": {
-   "file": "assets/photos/university-valley-sat.jpg",
-   "credit": "Sentinel-2 cloudless 2020 - EOX IT Services GmbH (CC BY 4.0)",
-   "url": "https://s2maps.eu"
-  },
-  "photoSource": "category+text"
  },
  "dry-valleys": {
   "photos": [
