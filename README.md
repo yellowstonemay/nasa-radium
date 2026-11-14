@@ -75,6 +75,11 @@ The selected pin switches to RADIUM's teal accent, grows slightly and gains a pu
 the far hemisphere of the globe are hidden using a horizon-angle test. On Earth the selected site
 also shows a dashed radius ring that shrinks from 120 km to 2.5 km as you zoom in.
 
+**Clicking a pin selects that site. Clicking bare surface is a separate gesture** that drops a small
+teal ring with its coordinates and runs a point query. globe.gl renders HTML markers inside a
+container with `pointer-events: none`, so pins explicitly re-enable pointer events; a pin click also
+suppresses the globe click that follows so the two gestures can never collide.
+
 ### Site imagery (real, never generated)
 
 Every dossier now carries imagery of the actual place:

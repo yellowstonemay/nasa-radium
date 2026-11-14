@@ -244,24 +244,53 @@
         'letter-spacing="0.2" fill="var(--pin-ink)">__LETTER__</text>' +
     "</svg>";
 
+  function queryMarkerElement(label) {
+    const node = document.createElement("div");
+    node.className = "rd-query";
+    node.setAttribute("role", "img");
+    node.setAttribute("aria-label", "Clicked point " + label);
+    const text = document.createElement("span");
+    text.className = "rd-query-label";
+    text.textContent = label;
+    node.appendChild(text);
+    return node;
+  }
+
   function pinElement({ color, glow, selected, query, label, letter, dx, onClick }) {
     const node = document.createElement("div");
-    node.className = "rd-pin" + (selected ? " is-selected" : "") + (query ? " is-query" : "");
+    node.className = "rd-pin" + (selected ? " is-selected" : "");
     node.style.setProperty("--pin", color);
     node.style.setProperty("--pin-ink", selected ? SELECTED_PIN.ink : "#ffffff");
     node.style.setProperty("--pin-glow", glow || "rgba(93,220,201,0.55)");
     if (dx) node.style.setProperty("--pin-dx", dx + "px");
     node.innerHTML = PIN_SVG.replace("__LETTER__", letter || "?");
-    node.setAttribute("role", "img");
+    node.setAttribute("role", "button");
+    node.setAttribute("tabindex", "0");
     node.setAttribute("aria-label", label || "");
     if (label) node.title = label;
     if (onClick) {
       node.addEventListener("click", (event) => {
         event.stopPropagation();
+        suppressGlobeClick();
         onClick();
+      });
+      node.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressGlobeClick();
+          onClick();
+        }
       });
     }
     return node;
+  }
+
+  /* A click on a pin is a selection, not a coordinate query. Ignore the globe
+     click that follows for a moment so the two never fight. */
+  let globeClickBlockedUntil = 0;
+  function suppressGlobeClick() {
+    globeClickBlockedUntil = Date.now() + 350;
   }
 
   function shade(hex, amount) {
@@ -549,11 +578,8 @@
         lat: state.point.conditions.lat,
         lng: state.point.conditions.lon,
         isQuery: true,
-        color: "#0d5f57",
-        glow: "rgba(93,220,201,0.65)",
-        letter: "\u25c9",
-        alt: 0.03,
-        label: "Query point"
+        label: pointLabel(state.point.conditions.lat, state.point.conditions.lon),
+        alt: 0.03
       });
     }
 
@@ -562,16 +588,17 @@
       .htmlAltitude((d) => d.alt)
       .htmlTransitionDuration(0)
       .htmlElement((d) =>
-        pinElement({
-          color: d.color,
-          glow: d.glow,
-          selected: d.isSelected,
-          query: d.isQuery,
-          letter: d.letter,
-          label: d.label,
-          dx: d.dx,
-          onClick: d.isQuery ? null : () => selectSite(d.id)
-        })
+        d.isQuery
+          ? queryMarkerElement(d.label)
+          : pinElement({
+              color: d.color,
+              glow: d.glow,
+              selected: d.isSelected,
+              letter: d.letter,
+              label: d.label,
+              dx: d.dx,
+              onClick: () => selectSite(d.id)
+            })
       )
       .htmlElementVisibilityModifier((element, d) => pointIsVisible(d.lat, d.lng));
 
@@ -602,6 +629,7 @@
   }
 
   function handleGlobeClick(lat, lng) {
+    if (Date.now() < globeClickBlockedUntil) return;
     queryPoint(state.body, lat, lng);
   }
 
@@ -1494,16 +1522,14 @@
   }
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+    if (event.key !== "Escape") return;    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
     if (state.twinSource && state.body === "earth") {
       state.twinSource = null;
       renderTwinBanner();
     }
   });
 
-  window.RADIUM_APP = {
-    state,
+  window.RADIUM_APP = {    state,
     SITES,
     selectSite,
     queryPoint,
