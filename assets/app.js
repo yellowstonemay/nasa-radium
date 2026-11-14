@@ -36,9 +36,25 @@
       { id: "mars_visible", label: "Viking colour", legend: "Viking MDIM 2.1 colour mosaic" }
     ],
     earth: [
-      { id: "earth_base", label: "Blue Marble", legend: "NASA Blue Marble shaded relief + bathymetry" },
-      { id: "earth_temp", label: "Surface temp", legend: "MODIS Terra land surface temperature, 2024-07-01" },
-      { id: "earth_lights", label: "Night lights", legend: "VIIRS Black Marble night lights (2016)" }
+      { id: "earth_base", label: "Blue Marble", legend: "NASA Blue Marble shaded relief + bathymetry", kind: "base" },
+      {
+        id: "earth_temp",
+        label: "Surface temp",
+        legend: "Interpolated mean air temperature, NASA POWER 2001-2020 (real measurements at 40 sites; faded beyond 2,500 km)",
+        kind: "temp"
+      },
+      {
+        id: "earth_suit",
+        label: "Analog grade field",
+        legend: "Weighted analog score interpolated from the 40 shortlisted sites — reacts to the mission designer",
+        kind: "suit"
+      },
+      {
+        id: "earth_twin",
+        label: "Twin similarity",
+        legend: "Similarity to the selected Moon/Mars target, interpolated across Earth",
+        kind: "twin"
+      }
     ]
   };
 
@@ -309,6 +325,7 @@
     const twin = state.point.site;
     const target = matchId || (state.point.matches[0] && state.point.matches[0].site.id);
     state.twinSource = twin;
+    state.layer.earth = "earth_twin";
     state.point = null;
     setBody("earth");
     renderTwinBanner();
@@ -484,15 +501,10 @@
     );
     earthLayers.earth_base = L.layerGroup([offlineBase, liveBase]);
 
-    earthLayers.earth_temp = L.tileLayer(
-      "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Land_Surface_Temp_Day/default/2024-07-01/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png",
-      { opacity: 0.82, maxNativeZoom: 7, tileSize: 256, crossOrigin: true }
-    );
-
-    earthLayers.earth_lights = L.tileLayer(
-      "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/VIIRS_Night_Lights/default/2016-01-01/GoogleMapsCompatible_Level8/{z}/{y}/{x}.png",
-      { opacity: 0.9, maxNativeZoom: 8, tileSize: 256, crossOrigin: true }
-    );
+    earthLayers.earth_temp = L.imageOverlay("assets/grids/earth-temp.png", [[-90, -180], [90, 180]], {
+      opacity: 0.92,
+      interactive: false
+    });
 
     earthMap.on("click", (event) => {
       const nearest = R.nearestEarth(SITES.earth, event.latlng.lat, event.latlng.lng);
@@ -506,16 +518,147 @@
     });
   }
 
+  /* ------------------------------------------- computed Earth field layers */
+  const FIELD_W = 720;
+  const FIELD_H = 360;
+  const FIELD_MASK_KM = 2200;
+
+  const FIELD_RAMP = [
+    [0.0, [9, 22, 66]],
+    [0.3, [30, 96, 152]],
+    [0.52, [56, 186, 168]],
+    [0.74, [233, 178, 68]],
+    [1.0, [247, 219, 172]]
+  ];
+
+  function rampAt(t) {
+    const v = Math.min(1, Math.max(0, t));
+    for (let i = 0; i < FIELD_RAMP.length - 1; i += 1) {
+      const [p0, c0] = FIELD_RAMP[i];
+      const [p1, c1] = FIELD_RAMP[i + 1];
+      if (v <= p1) {
+        const f = (v - p0) / Math.max(1e-6, p1 - p0);
+        return [
+          Math.round(c0[0] + (c1[0] - c0[0]) * f),
+          Math.round(c0[1] + (c1[1] - c0[1]) * f),
+          Math.round(c0[2] + (c1[2] - c0[2]) * f)
+        ];
+      }
+    }
+    return FIELD_RAMP[FIELD_RAMP.length - 1][1];
+  }
+
+  function fieldDistanceKm(lat1, lon1, lat2, lon2) {
+    const p = Math.PI / 180;
+    const dLat = (lat2 - lat1) * p;
+    const dLon = (lon2 - lon1) * p;
+    const a =
+      Math.sin(dLat / 2) ** 2 +
+      Math.cos(lat1 * p) * Math.cos(lat2 * p) * Math.sin(dLon / 2) ** 2;
+    return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
+  }
+
+  /* Inverse-distance interpolation, masked by distance to the nearest real site
+     so the layer never invents a value in the middle of an empty ocean. */
+  function buildFieldCanvas(points, lo, hi) {
+    const span = Math.max(1e-6, hi - lo);
+    const canvas = document.createElement("canvas");
+    canvas.width = FIELD_W;
+    canvas.height = FIELD_H;
+    const ctx = canvas.getContext("2d");
+    const image = ctx.createImageData(FIELD_W, FIELD_H);
+    const data = image.data;
+
+    for (let y = 0; y < FIELD_H; y += 1) {
+      const lat = 90 - ((y + 0.5) * 180) / FIELD_H;
+      for (let x = 0; x < FIELD_W; x += 1) {
+        const lon = -180 + ((x + 0.5) * 360) / FIELD_W;
+        let wSum = 0;
+        let vSum = 0;
+        let nearest = Infinity;
+        for (let i = 0; i < points.length; i += 1) {
+          const p = points[i];
+          const d = fieldDistanceKm(lat, lon, p.lat, p.lon);
+          if (d < nearest) nearest = d;
+          const w = Math.exp(-(d * d) / (2 * 820 * 820)) + 0.02 / Math.max(d, 200);
+          wSum += w;
+          vSum += w * p.value;
+        }
+        const idx = (y * FIELD_W + x) * 4;
+        if (!wSum || nearest > FIELD_MASK_KM) {
+          data[idx + 3] = 0;
+          continue;
+        }
+        const value = vSum / wSum;
+        const rgb = rampAt((value - lo) / span);
+        const fade = Math.min(1, Math.max(0, (FIELD_MASK_KM - nearest) / 600));
+        data[idx] = rgb[0];
+        data[idx + 1] = rgb[1];
+        data[idx + 2] = rgb[2];
+        data[idx + 3] = Math.round(fade * 200);
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+    return canvas.toDataURL("image/png");
+  }
+
+  function fieldPoints(kind) {
+    if (kind === "suit") {
+      const points = SITES.earth.map((site) => ({
+        lat: site.lat,
+        lon: site.lon,
+        value: scoreFor(site).value
+      }));
+      const values = points.map((p) => p.value);
+      return { points, lo: Math.min(...values), hi: Math.max(...values) };
+    }
+    if (kind === "twin") {
+      if (!state.twinSource) return null;
+      const points = SITES.earth.map((site) => ({
+        lat: site.lat,
+        lon: site.lon,
+        value: R.similarity(state.twinSource, site).score
+      }));
+      const values = points.map((p) => p.value);
+      return { points, lo: Math.min(...values), hi: Math.max(...values) };
+    }
+    return null;
+  }
+
+  function refreshFieldLayer() {
+    if (!earthMap || state.body !== "earth") return;
+    const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
+    if (!active || (active.kind !== "suit" && active.kind !== "twin")) return;
+
+    const field = fieldPoints(active.kind);
+    if (!field) return;
+    const url = buildFieldCanvas(field.points, field.lo, field.hi);
+    if (earthLayers.earth_field) earthMap.removeLayer(earthLayers.earth_field);
+    earthLayers.earth_field = L.imageOverlay(url, [[-90, -180], [90, 180]], {
+      opacity: 0.88,
+      interactive: false
+    }).addTo(earthMap);
+    earthLayers.earth_field.bringToFront();
+    state.fieldRange = { kind: active.kind, lo: field.lo, hi: field.hi };
+    renderLayers();
+  }
+
   function applyEarthLayer() {
     if (!earthMap) return;
-    [earthLayers.earth_temp, earthLayers.earth_lights].forEach((layer) => earthMap.removeLayer(layer));
+    ["earth_temp", "earth_field"].forEach((key) => {
+      if (earthLayers[key] && earthMap.hasLayer(earthLayers[key])) earthMap.removeLayer(earthLayers[key]);
+    });
     earthLayers.earth_base.addTo(earthMap);
-    const overlay = earthLayers[state.layer.earth];
-    if (overlay && overlay !== earthLayers.earth_base) {
-      overlay.addTo(earthMap);
-      overlay.bringToFront();
+
+    const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
+    if (!active) return;
+    if (active.kind === "temp") {
+      earthLayers.earth_temp.addTo(earthMap);
+      earthLayers.earth_temp.bringToFront();
+    } else if (active.kind === "suit" || active.kind === "twin") {
+      refreshFieldLayer();
     }
-    earthMap.getContainer().style.background = state.layer.earth === "earth_lights" ? "#02040a" : "#05070f";
+    renderEarthMarkers();
   }
 
   function renderEarthMarkers() {
@@ -568,20 +711,48 @@
         renderLayers();
         if (state.body === "earth") applyEarthLayer();
         else applyGlobeTexture();
-      });
-      host.appendChild(btn);
+      });      host.appendChild(btn);
     });
 
     const active = LAYERS[state.body].find((l) => l.id === state.layer[state.body]);
     const sourceNote =
       state.body === "earth"
-        ? "Live NASA GIBS tiles · cached Blue Marble base"
+        ? "Computed from NASA POWER + ETOPO1 · cached offline"
         : state.body === "moon"
         ? "NASA Moon Trek (LRO)"
         : "NASA Mars Trek (MGS/TES)";
+
+    let scale = "";
+    if (state.body === "earth" && active) {
+      if (active.kind === "temp") {
+        const meta = window.RADIUM_GRID_EARTH && window.RADIUM_GRID_EARTH.layer;
+        if (meta) {
+          scale =
+            '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaA8,#e9b244,#f7dbac)"></div>' +
+            '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
+            fmt(meta.min, 0) + " °C</span><span>" + fmt(meta.max, 0) + " °C</span></div>";
+        }
+      } else if (active.kind === "suit") {
+        const range = state.fieldRange && state.fieldRange.kind === "suit" ? state.fieldRange : null;
+        scale =
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#38baA8,#e9b244,#f7dbac)"></div>' +
+          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
+          (range ? fmt(range.lo, 0) + " pts" : "weak") + "</span><span>" +
+          (range ? fmt(range.hi, 0) + " pts" : "strong") + "</span></div>";
+      } else if (active.kind === "twin") {
+        const range = state.fieldRange && state.fieldRange.kind === "twin" ? state.fieldRange : null;
+        scale = state.twinSource
+          ? '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#38baA8,#e9b244,#f7dbac)"></div>' +
+            '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>closest ' +
+            (range ? fmt(range.lo, 0) : "—") + "%</span><span>best " + (range ? fmt(range.hi, 0) : "—") + "%</span></div>"
+          : '<p class="mt-2 text-[10px] leading-relaxed text-amber/80">Pick a Moon/Mars site or click the globe first, then reopen Earth Twin mode to light up this field.</p>';
+      }
+    }
+
     $("#legend").innerHTML =
       '<p class="eyebrow">Layer</p>' +
       '<p class="mt-1 text-[11px] leading-relaxed text-bone">' + (active ? active.legend : "") + "</p>" +
+      scale +
       '<p class="mt-1 text-[10px] uppercase tracking-widest text-muted">' + sourceNote + "</p>";
   }
 
@@ -824,12 +995,15 @@
         '<button type="button" class="layer-btn !py-1 ml-auto" data-close-twin="1" aria-label="Exit twin mode">Exit</button>' +
       "</div>";
     if (state.body === "earth") renderRail();
+    renderLayers();
+    if (state.body === "earth") applyEarthLayer();
   }
 
   function openTwin(siteId) {
     const source = Object.values(SITES).flat().find((s) => s.id === siteId);
     if (!source) return;
     state.twinSource = source;
+    state.layer.earth = "earth_twin";
     setBody("earth");
     const best = R.topTwins(SITES.earth, source, 1)[0];
     if (best) selectSite(best.site.id);
@@ -856,8 +1030,11 @@
   function refreshScores() {
     renderRail();
     renderDetail();
-    if (state.body === "earth") renderEarthMarkers();
-    else renderGlobePoints();
+    if (state.body === "earth") {
+      renderEarthMarkers();
+      const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
+      if (active && active.kind === "suit") refreshFieldLayer();
+    } else renderGlobePoints();
   }
 
   const PRESETS = {
@@ -879,8 +1056,9 @@
       ["NOAA ETOPO1 elevation", "1 arc-minute global relief via OpenTopoData", "https://www.ngdc.noaa.gov/mgg/global/"],
       ["LOLA LDEM_4 (Moon DEM)", "4 pixels/deg int16, slope + relief computed here", "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/"],
       ["MOLA MEGDR (Mars DEM)", "16 pixels/deg int16 topography, slope + relief computed here", "https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/"],
-      ["MODIS Terra land surface temperature", "NASA GIBS, 2024-07-01", "https://gibs.earthdata.nasa.gov/"],
-      ["VIIRS night lights / Blue Marble", "NASA GIBS", "https://worldview.earthdata.nasa.gov/"]
+      ["MODIS Terra land surface temperature", "NASA GIBS daily swath (clear-sky only; replaced by the computed field below)", "https://gibs.earthdata.nasa.gov/"],
+      ["Earth temperature field", "IDW of 40 NASA POWER climatologies, masked to 2,500 km", "https://power.larc.nasa.gov/"],
+      ["Blue Marble shaded relief", "NASA GIBS (live tiles + cached fallback)", "https://worldview.earthdata.nasa.gov/"]
     ];
 
     $("#sources-body").innerHTML =
@@ -956,10 +1134,36 @@
   renderSources();
   renderWeightControls();
   renderTabs();
-  setBody("moon");
 
-  const bootTop = sortedSites("moon")[0];
-  if (bootTop) selectSite(bootTop.site.id);
+  /* Deep links: #earth:earth_twin, #mars, ... makes demo jumps and
+     screenshot verification deterministic. */
+  function applyHash() {
+    const raw = (location.hash || "").replace(/^#/, "");
+    if (!raw) return false;
+    const [bodyKey, layerKey, targetId] = raw.split(":");
+    if (!BODY_META[bodyKey]) return false;
+    if (layerKey && LAYERS[bodyKey].some((l) => l.id === layerKey)) {
+      state.layer[bodyKey] = layerKey;
+    }
+    if (targetId) {
+      const target = Object.values(SITES).flat().find((s) => s.id === targetId);
+      if (target && target.body !== "earth") state.twinSource = target;
+    }
+    setBody(bodyKey);
+    if (targetId && SITES[bodyKey].some((s) => s.id === targetId)) {
+      selectSite(targetId, bodyKey !== "earth");
+    }
+    return true;
+  }
+
+  if (!applyHash()) setBody("moon");
+  if (state.body === "earth" && state.twinSource && !state.selected.earth) {
+    const best = R.topTwins(SITES.earth, state.twinSource, 1)[0];
+    if (best) selectSite(best.site.id, false);
+  } else if (state.body !== "earth" && !state.selected[state.body]) {
+    const top = sortedSites(state.body)[0];
+    if (top) selectSite(top.site.id, true);
+  }
 
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
@@ -970,5 +1174,20 @@
     }
   });
 
-  window.RADIUM_APP = { state, SITES, selectSite, queryPoint, openPointTwins };
+  window.RADIUM_APP = {
+    state,
+    SITES,
+    selectSite,
+    queryPoint,
+    openPointTwins,
+    setBody,
+    setLayer: (body, layerId) => {
+      state.layer[body] = layerId;
+      if (state.body === body) {
+        renderLayers();
+        if (body === "earth") applyEarthLayer();
+        else applyGlobeTexture();
+      }
+    }
+  };
 })();

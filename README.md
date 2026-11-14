@@ -27,11 +27,15 @@ The only live-network features are the optional NASA GIBS Earth layers.
 Regenerate the derived data (all three scripts are keyless and idempotent):
 
 ```powershell
-python tools\fetch_textures.py     # stitches NASA Trek/GIBS tiles into assets/textures/
-python tools\build_grids.py        # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
-python tools\fetch_earth_data.py   # NASA POWER + ETOPO1 -> assets/earth-metrics.js
-node   tools\check-data.mjs        # sanity check: scores, letters, sources, grids, twins
+python tools\fetch_textures.py      # stitches NASA Trek/GIBS tiles into assets/textures/
+python tools\build_grids.py         # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
+python tools\build_earth_layers.py  # Earth temperature field + night-lights probe
+python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
+node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 ```
+
+Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
+for that Moon site; `#earth:earth_suit` opens the analog-grade field; `#mars` opens Mars.
 
 Screenshots: `node screenshot.mjs http://localhost:3000 [label]` (needs Puppeteer; set
 `PUPPETEER_PATH` if it is installed outside this repo).
@@ -50,8 +54,14 @@ which is which.
 | Mars base | MGS MOLA colour shaded relief, 463 m | [Mars Trek](https://trek.nasa.gov/mars/) · [PDS MRO](https://pds-geosciences.wustl.edu/missions/mro/) |
 | Mars colour | Viking MDIM 2.1 mosaic, 232 m | [Mars Trek](https://trek.nasa.gov/mars/) · [USGS Astrogeology](https://astrogeology.usgs.gov/) |
 | Earth base | Blue Marble + bathymetry | [NASA GIBS](https://gibs.earthdata.nasa.gov/) (live tiles + cached fallback) |
-| Earth surface temp | MODIS Terra land surface temperature, 2024-07-01 | [NASA GIBS](https://gibs.earthdata.nasa.gov/) |
-| Earth night lights | VIIRS Black Marble | [NASA GIBS](https://gibs.earthdata.nasa.gov/) |
+| Earth surface temperature | **computed** IDW of the 40 NASA POWER climatologies, faded beyond 2,500 km | [NASA POWER](https://power.larc.nasa.gov/) |
+| Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
+| Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
+
+> NASA's daily MODIS land-surface-temperature and VIIRS night-lights GIBS layers are clear-sky /
+> lights-only products (16% and 0.3% opaque pixels at low zoom), so they render as dust on a dark
+> map. RADIUM therefore computes complete fields from the measured site climatologies instead of
+> shipping a layer that looks broken.
 
 **Computed point values** — every Earth pin is calculated, not typed in:
 `tools/fetch_earth_data.py` pulls the NASA POWER 2001–2020 climatology (temperature, pressure,
