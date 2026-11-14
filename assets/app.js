@@ -792,8 +792,7 @@
 
   function renderPointDetail(host) {
     const point = state.point;
-    const meta = GRID_META[point.body];
-    const c = point.conditions;
+    const meta = GRID_META[point.body];    const c = point.conditions;
     const tiles = [
       ["Day temp", fmt(c.tempDayC, 0) + " °C"],
       ["Night temp", fmt(c.tempNightC, 0) + " °C"],
@@ -868,6 +867,106 @@
       "</div>";
   }
 
+  /* ------------------------------------------------------------- imagery */
+  function googleMapsLinks(lat, lon) {
+    const coords = lat.toFixed(5) + "," + lon.toFixed(5);
+    return {
+      street: "https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=" + coords,
+      map: "https://www.google.com/maps/search/?api=1&query=" + coords,
+      world:
+        "https://worldview.earthdata.nasa.gov/?v=" +
+        (lon - 6).toFixed(2) + "," + (lat - 4).toFixed(2) + "," +
+        (lon + 6).toFixed(2) + "," + (lat + 4).toFixed(2) +
+        "&l=Reference_Labels_15m(hidden),Reference_Features_15m(hidden),Coastlines_15m,MODIS_Terra_CorrectedReflectance_TrueColor&t=2024-07-01"
+    };
+  }
+
+  function imageryBlock(site) {
+    if (site.body === "earth") return earthImagery(site);
+    return pinImagery(site);
+  }
+
+  function pinImagery(site) {
+    const src = (window.RADIUM_PIN_THUMBS || {})[site.body + ":" + site.id];
+    if (!src) return "";
+    const source =
+      site.body === "moon"
+        ? "LRO WAC mosaic, 303 ppd (NASA Moon Trek)"
+        : "Viking MDIM 2.1 colour mosaic (NASA Mars Trek)";
+    return (
+      '<div class="mt-4">' +
+        '<p class="eyebrow">Surface at this site</p>' +
+        '<figure class="mt-1.5 overflow-hidden rounded-xl border border-white/[0.08]">' +
+          '<img src="' + src + '" alt="Mosaic view of ' + site.name + '" loading="lazy" ' +
+            'class="h-40 w-full object-cover" />' +
+          '<figcaption class="border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] leading-relaxed text-muted">' +
+            source + " · 0.5° field of view" +
+          "</figcaption>" +
+        "</figure>" +
+      "</div>"
+    );
+  }
+
+  function earthImagery(site) {
+    const entry = (window.RADIUM_PHOTOS || {})[site.id];
+    const links = googleMapsLinks(site.lat, site.lon);
+    const parts = [];
+
+    if (entry && entry.satellite) {
+      parts.push(
+        '<figure class="overflow-hidden rounded-xl border border-white/[0.08]">' +
+          '<img src="' + entry.satellite.file + '" alt="Sentinel-2 satellite view of ' + site.name + '" ' +
+            'loading="lazy" class="h-36 w-full object-cover" />' +
+          '<figcaption class="border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] leading-relaxed text-muted">' +
+            "Satellite · " +
+            '<a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + entry.satellite.url +
+            '" target="_blank" rel="noopener noreferrer">' + entry.satellite.credit + "</a>" +
+          "</figcaption>" +
+        "</figure>"
+      );
+    }
+
+    if (entry && entry.photos && entry.photos.length) {
+      entry.photos.forEach((photo) => {
+        parts.push(
+          '<figure class="overflow-hidden rounded-xl border border-white/[0.08]">' +
+            '<img src="' + photo.file + '" alt="' + photo.title.replace(/"/g, "&quot;") + '" ' +
+              'loading="lazy" class="h-36 w-full object-cover" />' +
+            '<figcaption class="border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] leading-relaxed text-muted">' +
+              "Ground view · " + photo.author +
+              (photo.licenseUrl
+                ? ' · <a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + photo.licenseUrl +
+                  '" target="_blank" rel="noopener noreferrer">' + photo.license + "</a>"
+                : " · " + photo.license) +
+              ' · <a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + photo.page +
+              '" target="_blank" rel="noopener noreferrer">Commons</a>' +
+            "</figcaption>" +
+          "</figure>"
+        );
+      });
+    }
+
+    const body = parts.length
+      ? parts.join("")
+      : '<p class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-[11px] leading-relaxed text-muted">No licensed ground photography is available for this site. Use the satellite buttons below.</p>';
+
+    return (
+      '<div class="mt-4">' +
+        '<div class="flex items-baseline justify-between gap-2">' +
+          '<p class="eyebrow">How this site looks</p>' +
+          '<span class="text-[10px] text-muted">real imagery</span>' +
+        "</div>" +
+        '<div class="mt-1.5 space-y-1.5">' + body + "</div>" +
+        '<div class="mt-2 flex flex-wrap gap-1.5">' +
+          '<a class="layer-btn" href="' + links.street + '" target="_blank" rel="noopener noreferrer">Street View ↗</a>' +
+          '<a class="layer-btn" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Google Maps ↗</a>' +
+          '<a class="layer-btn" href="' + links.world + '" target="_blank" rel="noopener noreferrer">NASA Worldview ↗</a>' +
+        "</div>" +
+        '<p class="mt-1.5 text-[10px] leading-relaxed text-muted/80">Street View opens Google Maps at these coordinates; coverage varies by site. Photos are Creative Commons licensed and credited.</p>' +
+      "</div>"
+    );
+  }
+
   function renderDetail() {
     const host = $("#detail");
     if (state.point) {
@@ -933,6 +1032,7 @@
               '<p class="mt-2 eyebrow text-[10px]">Where it breaks down</p>' +
               '<p class="mt-1 text-[11px] leading-relaxed text-muted">' + site.limits + "</p></div>"
           : "") +
+        imageryBlock(site) +
         twinBlock(site) +
         '<a class="mt-4 inline-flex items-center gap-1 text-[11px] text-ice underline decoration-ice/40 underline-offset-4 hover:decoration-ice" href="' +
           site.source.url + '" target="_blank" rel="noopener noreferrer">' + site.source.label + " ↗</a>" +

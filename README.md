@@ -31,6 +31,8 @@ python tools\fetch_textures.py      # stitches NASA Trek/GIBS tiles into assets/
 python tools\build_grids.py         # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
 python tools\build_earth_layers.py  # Earth temperature field + night-lights probe
 python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
+python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
+python tools\build_site_thumbs.py   # Moon/Mars surface crops for each pin
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 ```
 
@@ -57,6 +59,26 @@ which is which.
 | Earth surface temperature | **computed** IDW of the 40 NASA POWER climatologies, faded beyond 2,500 km | [NASA POWER](https://power.larc.nasa.gov/) |
 | Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
+
+### Site imagery (real, never generated)
+
+Every dossier now carries imagery of the actual place:
+
+| Body | Image | Source |
+| --- | --- | --- |
+| Moon | 0.5° surface crop at the pin | LRO WAC mosaic (NASA Moon Trek) |
+| Mars | 0.5° surface crop at the pin | Viking MDIM 2.1 (NASA Mars Trek) |
+| Earth | top-down satellite mosaic | Sentinel-2 cloudless 2020, EOX (CC BY 4.0) |
+| Earth | 1–2 ground photos geotagged at the site | Wikimedia Commons, author + licence shown |
+
+Earth dossiers also link out to **Google Street View / Google Maps** at the exact coordinates
+(no API key needed via the Maps URL API) and **NASA Worldview** for the live daily imagery.
+
+`tools/fetch_site_photos.py` downloads the mosaics and photos into `assets/photos/` with a
+manifest of authors and licences, so the demo shows real imagery even with no network.
+Photos are filtered for landscape subjects (infrastructure/signage titles are rejected) and ranked
+by landscape relevance, because Commons geosearch sorts by distance and otherwise returns things
+like a railway wagon next to a desert viewpoint.
 
 > NASA's daily MODIS land-surface-temperature and VIIRS night-lights GIBS layers are clear-sky /
 > lights-only products (16% and 0.3% opaque pixels at low zoom), so they render as dust on a dark
@@ -113,6 +135,7 @@ assets/app.css             design tokens and component styles
 assets/data/               curated Moon / Mars / Earth site records
 assets/earth-metrics.js    generated from NASA POWER + ETOPO1
 assets/textures/           stitched NASA raster layers (offline fallback)
+assets/photos/             real site imagery: Sentinel-2 mosaics, Commons photos, Moon/Mars crops
 assets/vendor/             globe.gl, Leaflet, Tailwind, display font
 tools/                     data + texture pipelines, sanity check
 serve.mjs                  static server (:3000)
