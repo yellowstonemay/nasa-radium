@@ -252,6 +252,7 @@
   }
 
   async function queryPoint(body, lat, lon) {
+    if (body !== state.body) return;
     try {
       await ensureGrids(body);
     } catch (err) {
