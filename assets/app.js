@@ -15,6 +15,16 @@
     F: "#7f1d1d"  // deepest red
   };
   const SELECTED_PIN = { fill: "#5ddcc9", ink: "#06302b" };
+  /* Bright neon palette for the outlined grade badges in the rail and dossiers.
+     The pins keep the deeper palette because they carry white letters. */
+  const GRADE_NEON = {
+    A: "#4ade80",
+    B: "#a3e635",
+    C: "#fbbf24",
+    D: "#fb923c",
+    E: "#f87171",
+    F: "#ef4444"
+  };
   /* 3D sphere pins read better slightly brighter than flat-map markers. */
   const SPHERE_COLOR = {
     A: "#22c55e",
@@ -217,8 +227,7 @@
       btn.type = "button";
       btn.setAttribute("aria-current", String(state.selected[state.body] === site.id));
       btn.innerHTML =
-        '<span class="grade" style="color:#fff;background:' +
-        GRADE_COLOR[card.letter] + '">' + card.letter + "</span>" +
+        gradeBadge(card.letter) +
         '<span class="min-w-0 flex-1">' +
           '<span class="block truncate text-[13px] text-bone">' + site.name + "</span>" +
           '<span class="mt-0.5 block truncate text-[11px] text-muted">' + site.region + "</span>" +
@@ -301,6 +310,19 @@
 
   function pinColor(letter) {
     return GRADE_COLOR[letter] || GRADE_COLOR.C;
+  }
+
+  function neonColor(letter) {
+    return GRADE_NEON[letter] || GRADE_NEON.C;
+  }
+
+  function gradeBadge(letter) {
+    const color = neonColor(letter);
+    return (
+      '<span class="grade" style="color:' + color +
+      ";--grade-glow:" + hexToRgba(color, 0.55) +
+      ";--grade-tint:" + hexToRgba(color, 0.1) + '">' + letter + "</span>"
+    );
   }
 
   function sphereColor(letter) {
@@ -1375,8 +1397,10 @@
     host.innerHTML =
       '<div class="fade-in">' +
         '<div class="flex items-start gap-3">' +
-          '<span class="grade shrink-0" style="width:3rem;height:3rem;font-size:1.3rem;border-radius:14px;' +
-            "color:#fff;background:" + GRADE_COLOR[card.letter] + '">' + card.letter + "</span>" +
+          '<span class="grade grade-lg shrink-0" style="color:' + neonColor(card.letter) +
+            ";--grade-glow:" + hexToRgba(neonColor(card.letter), 0.6) +
+            ";--grade-tint:" + hexToRgba(neonColor(card.letter), 0.1) +
+            '">' + card.letter + "</span>" +
           '<div class="min-w-0">' +
             '<p class="eyebrow">' + BODY_META[site.body].label + " · " + fmt(card.value, 1) + " / 100</p>" +
             '<h2 class="mt-1 font-display text-[1.55rem] leading-tight">' + site.name + "</h2>" +
