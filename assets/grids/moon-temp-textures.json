@@ -1,0 +1,40 @@
+{
+  "generated": "tools/build_moon_temp_textures.py",
+  "resolution": [
+    2048,
+    1024
+  ],
+  "method": "latitude regression calibrated on published Diviner site temperatures, rendered over the LRO WAC mosaic for relief",
+  "error": {
+    "moon_day": "\u00b18 K",
+    "moon_night": "\u00b110 K"
+  },
+  "layers": {
+    "moon_day": {
+      "key": "moon_day",
+      "file": "assets/textures/moon_day.jpg",
+      "bytes": 300704,
+      "rangeC": [
+        -65.0,
+        110.0
+      ],
+      "modelRangeC": [
+        -52.9,
+        102.8
+      ]
+    },
+    "moon_night": {
+      "key": "moon_night",
+      "file": "assets/textures/moon_night.jpg",
+      "bytes": 220957,
+      "rangeC": [
+        -200.0,
+        -150.0
+      ],
+      "modelRangeC": [
+        -192.1,
+        -164.9
+      ]
+    }
+  }
+}

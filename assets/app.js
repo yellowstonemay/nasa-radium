@@ -58,8 +58,18 @@
         label: "LROC mosaic",
         legend: "LRO WAC mosaic blended with the polar-filled LROC texture at the caps"
       },
-      { id: "moon_day", label: "Day temperature", legend: "Diviner average daytime temperature (K)" },
-      { id: "moon_night", label: "Night temperature", legend: "Diviner average nighttime temperature (K)" }
+      {
+        id: "moon_day",
+        label: "Day temperature",
+        legend:
+          "Modelled day-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (?8 K), ramp -65 to 110 ?C"
+      },
+      {
+        id: "moon_night",
+        label: "Night temperature",
+        legend:
+          "Modelled night-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (?12 K), ramp -200 to -150 ?C"
+      }
     ],
     mars: [
       { id: "mars_base", label: "MOLA relief", legend: "MOLA colour-shaded elevation (km)" },
@@ -1769,7 +1779,7 @@
   function renderSources() {
     const dataRows = [
       ["LRO WAC global mosaic", "Moon Trek WMTS, 303 ppd", "https://trek.nasa.gov/moon/"],
-      ["Diviner average surface temperature", "Moon Trek WMTS, 32 ppd (day + night)", "https://pds-geosciences.wustl.edu/missions/lro/diviner.htm"],
+      ["Diviner surface temperature climatology", "site values drive the latitude model rendered by tools/build_moon_temp_textures.py; Moon Trek only publishes 24 of 32 tiles at its deepest zoom, so the raster is not shipped directly", "https://pds-geosciences.wustl.edu/missions/lro/diviner.htm"],
       ["MGS MOLA colour shaded relief", "Mars Trek WMTS, 463 m", "https://pds-geosciences.wustl.edu/missions/mro/"],
       ["Viking MDIM 2.1 colour mosaic", "Mars Trek WMTS, 232 m", "https://astrogeology.usgs.gov/search?q=viking"],
       ["NASA POWER climatology", "2001-2020 monthly/annual means (MERRA-2, CERES)", "https://power.larc.nasa.gov/"],

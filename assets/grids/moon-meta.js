@@ -23,15 +23,15 @@ window.RADIUM_GRID_MOON = {
       "file": "assets/grids/moon-tempday.png",
       "min": -235.0,
       "max": 130.0,
-      "model": "latitude regression fitted to published site temperatures",
-      "rmseK": 7.9
+      "model": "isotonic latitude fit (monotone in |lat|) on published site temperatures",
+      "rmseK": 8.1
     },
     "tempNightC": {
       "file": "assets/grids/moon-tempnight.png",
       "min": -235.0,
       "max": 130.0,
-      "model": "latitude regression fitted to published site temperatures",
-      "rmseK": 9.7
+      "model": "isotonic latitude fit (monotone in |lat|) on published site temperatures",
+      "rmseK": 11.8
     }
   },
   "provenance": {

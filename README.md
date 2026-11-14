@@ -35,6 +35,7 @@ python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metric
 python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
 python tools\build_site_thumbs.py   # Moon/Mars surface crops for each pin
 python tools\merge_moon_texture.py  # blends WAC detail with the polar-filled texture
+python tools\build_moon_temp_textures.py # renders the day/night temperature globe textures
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
 ```
@@ -57,7 +58,7 @@ which is which.
 | Layer | Product | Source |
 | --- | --- | --- |
 | Moon base | LRO WAC global mosaic (303 ppd) blended with NASA SVS LROC colour-poles texture above 66 deg | [Moon Trek](https://trek.nasa.gov/moon/) · [SVS](https://svs.gsfc.nasa.gov/4720) |
-| Moon day / night temp | Diviner average surface temperature, 32 ppd | [Moon Trek](https://trek.nasa.gov/moon/) · [PDS Diviner](https://pds-geosciences.wustl.edu/missions/lro/diviner.htm) |
+| Moon day / night temp | **modelled** isotonic latitude fit to Diviner site climatology, rendered over the LRO WAC mosaic | [PDS Diviner](https://pds-geosciences.wustl.edu/missions/lro/diviner.htm) · [Moon Trek](https://trek.nasa.gov/moon/) |
 | Mars base | MGS MOLA colour shaded relief, 463 m | [Mars Trek](https://trek.nasa.gov/mars/) · [PDS MRO](https://pds-geosciences.wustl.edu/missions/mro/) |
 | Mars colour | Viking MDIM 2.1 mosaic, 232 m | [Mars Trek](https://trek.nasa.gov/mars/) · [USGS Astrogeology](https://astrogeology.usgs.gov/) |
 | Earth base | High-resolution satellite imagery (Esri World Imagery) over a cached Blue Marble fallback, zoomable to level 17 | [Esri](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) |
@@ -117,6 +118,13 @@ authors and licences, so the demo works offline. Candidate selection matters mor
 - repeated subjects are collapsed, with a second pass only for sparse sites;
 - orbital images are detected and labelled instead of masquerading as ground views.
 
+> Moon Trek's Diviner colour product publishes only 24 of 32 tiles at its deepest zoom (z3, nothing
+> at z4+), which stitched into a black northern cap, an equatorial seam and vertical no-data streaks.
+> RADIUM therefore renders the temperature *grid* it already fits from that climatology, modulated by
+> the real LRO WAC mosaic, so the layer is complete and seamless at 2048x1024. The earlier stitch is
+> gone: the temperature textures also dropped from 2.5 MB of JPEG each to about 0.2-0.3 MB, which is
+> what was stalling the layer switch.
+>
 > NASA's daily MODIS land-surface-temperature and VIIRS night-lights GIBS layers are clear-sky /
 > lights-only products (16% and 0.3% opaque pixels at low zoom), so they render as dust on a dark
 > map. RADIUM therefore computes complete fields from the measured site climatologies instead of
@@ -134,7 +142,7 @@ elevation models to a 720×360 (0.5°) grid and derives slope and local relief f
 | --- | --- | --- |
 | Moon elevation / slope / roughness | LOLA `LDEM_4` (4 ppd, int16) | measured |
 | Mars elevation / slope / roughness | MOLA MEGDR (16 ppd, int16) | measured |
-| Moon day / night temperature | latitude regression on 10 published site temperatures | **modelled** (±8 K / ±10 K) |
+| Moon day / night temperature | isotonic latitude fit (monotone in \|lat\|) on 10 published Diviner site temperatures | **modelled** (±8.1 K / ±11.8 K) |
 | Mars day / night temperature | latitude + elevation regression on 12 published sites | **modelled** (±5 K / ±4 K) |
 
 Clicking the globe samples those PNG grids client-side. Water ice, dust and comms geometry are not

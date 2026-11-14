@@ -108,6 +108,38 @@ def fit_linear(x: np.ndarray, y: np.ndarray):
     return coef, rmse
 
 
+def fit_monotone_in_latitude(lats: np.ndarray, values: np.ndarray):
+    """Isotonic fit: temperature may only rise toward the equator.
+
+    A free quadratic in cos(lat) produced a colder belt at 50-70 deg with warmer
+    poles, which is physically wrong and looked like banding on the globe. Pooling
+    adjacent violators keeps the fit inside the data and monotone in cos(lat).
+    """
+    x = np.cos(np.deg2rad(np.abs(lats)))  # 0 at the pole, 1 at the equator
+    order = np.argsort(x)
+    xs, ys = x[order], values[order].astype(float)
+
+    level_values: list[float] = []
+    level_weights: list[float] = []
+    for y in ys:
+        level_values.append(float(y))
+        level_weights.append(1.0)
+        while len(level_values) > 1 and level_values[-2] > level_values[-1]:
+            v2 = level_values.pop()
+            w2 = level_weights.pop()
+            v1 = level_values.pop()
+            w1 = level_weights.pop()
+            level_values.append((v1 * w1 + v2 * w2) / (w1 + w2))
+            level_weights.append(w1 + w2)
+
+    fitted = []
+    for value, weight in zip(level_values, level_weights):
+        fitted.extend([value] * int(round(weight)))
+    fitted = np.array(fitted, dtype=float)
+    rmse = float(np.sqrt(np.mean((np.interp(x, xs, fitted) - values) ** 2)))
+    return xs, fitted, rmse
+
+
 def idw_fill(grid: np.ndarray, gap: np.ndarray, anchors: list[tuple[float, float]], values: np.ndarray) -> np.ndarray:
     """Inverse-distance interpolation from curated anchors for no-data cells."""
     rows, cols = grid.shape
@@ -147,16 +179,18 @@ def build_body(body: str, dem: np.ndarray, block: int, radius: float, curated: l
     if body == "moon":
         # The Diviner colour raster has swath gaps and drifts in the polar mosaic,
         # so temperature is fitted from latitude instead: honest, but only ±10 K.
+        # The fit is constrained to be monotone in |latitude| so the poles are the
+        # coldest places on the sphere instead of a colder mid-latitude belt.
         lat_grid = np.deg2rad(90.0 - (np.arange(GRID_H) + 0.5) * (180.0 / GRID_H))
+        cos_grid = np.cos(lat_grid)
         lats = np.array([s["lat"] for s in curated], dtype=np.float32)
-        xs = np.column_stack([np.cos(np.deg2rad(lats)), np.cos(np.deg2rad(lats)) ** 2])
         for key in ("tempDayC", "tempNightC"):
             ys = np.array([s[key] for s in curated], dtype=np.float32)
-            coef, rmse = fit_linear(xs, ys)
-            print(f"  {key}: latitude fit RMSE {rmse:.1f} K on {len(curated)} sites")
-            grid = np.clip(coef[0] + coef[1] * np.cos(lat_grid)[:, None] + coef[2] * np.cos(lat_grid)[:, None] ** 2, -235.0, 130.0)
+            xs, fitted, rmse = fit_monotone_in_latitude(lats, ys)
+            print(f"  {key}: monotone latitude fit RMSE {rmse:.1f} K on {len(curated)} sites")
+            grid = np.clip(np.interp(cos_grid, xs, fitted), -235.0, 130.0)[:, None]
             meta["layers"][key] = save_grid(f"{body}-{key.replace('C', '').lower()}", grid, -235.0, 130.0)
-            meta["layers"][key]["model"] = "latitude regression fitted to published site temperatures"
+            meta["layers"][key]["model"] = "isotonic latitude fit (monotone in |lat|) on published site temperatures"
             meta["layers"][key]["rmseK"] = round(rmse, 1)
     else:
         lats = np.array([s["lat"] for s in curated], dtype=np.float32)
