@@ -15,6 +15,15 @@
     F: "#7f1d1d"  // deepest red
   };
   const SELECTED_PIN = { fill: "#5ddcc9", ink: "#06302b" };
+  /* 3D sphere pins read better slightly brighter than flat-map markers. */
+  const SPHERE_COLOR = {
+    A: "#22c55e",
+    B: "#84cc16",
+    C: "#f59e0b",
+    D: "#ea580c",
+    E: "#dc2626",
+    F: "#991b1b"
+  };
   const BODY_META = {
     moon: {
       label: "Moon", title: "Lunar base suitability", note:
@@ -244,19 +253,9 @@
         'letter-spacing="0.2" fill="var(--pin-ink)">__LETTER__</text>' +
     "</svg>";
 
-  function queryMarkerElement(label) {
-    const node = document.createElement("div");
-    node.className = "rd-query";
-    node.setAttribute("role", "img");
-    node.setAttribute("aria-label", "Clicked point " + label);
-    const text = document.createElement("span");
-    text.className = "rd-query-label";
-    text.textContent = label;
-    node.appendChild(text);
-    return node;
-  }
-
-  function pinElement({ color, glow, selected, query, label, letter, dx, onClick }) {
+  /* Kept for the flat Earth map, which uses DOM markers so the letter can be
+     drawn inside the pin. */
+  function pinElement({ color, glow, selected, label, letter, onClick }) {
     const node = document.createElement("div");
     node.className = "rd-pin" + (selected ? " is-selected" : "");
     node.style.setProperty("--pin", color);
@@ -286,21 +285,11 @@
     return node;
   }
 
-  /* A click on a pin is a selection, not a coordinate query. Ignore the globe
+  /* A click on a marker is a selection, not a coordinate query. Ignore the globe
      click that follows for a moment so the two never fight. */
   let globeClickBlockedUntil = 0;
   function suppressGlobeClick() {
     globeClickBlockedUntil = Date.now() + 350;
-  }
-
-  function shade(hex, amount) {
-    const value = hex.replace("#", "");
-    const num = parseInt(value.length === 3 ? value.split("").map((c) => c + c).join("") : value, 16);
-    const clamp = (v) => Math.max(0, Math.min(255, Math.round(v)));
-    const r = clamp(((num >> 16) & 255) * (1 + amount));
-    const g = clamp(((num >> 8) & 255) * (1 + amount));
-    const b = clamp((num & 255) * (1 + amount));
-    return "rgb(" + r + "," + g + "," + b + ")";
   }
 
   function hexToRgba(hex, alpha) {
@@ -315,24 +304,12 @@
     return GRADE_COLOR[letter] || GRADE_COLOR.C;
   }
 
-  function selectedPinColor() {
-    return SELECTED_PIN.fill;
+  function sphereColor(letter) {
+    return SPHERE_COLOR[letter] || SPHERE_COLOR.C;
   }
 
-  /* Hide pins on the far hemisphere: a surface point is visible while its
-     angular distance from the camera target stays inside the horizon angle. */
-  function pointIsVisible(lat, lng) {
-    if (!globe) return true;
-    const view = globe.pointOfView() || {};
-    const altitude = Math.max(0.02, view.altitude || 2);
-    const horizon = Math.acos(1 / (1 + altitude)) * 1.04;
-    const toRad = Math.PI / 180;
-    const dLat = (lat - (view.lat || 0)) * toRad;
-    const dLng = (lng - (view.lng || 0)) * toRad;
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat * toRad) * Math.cos((view.lat || 0) * toRad) * Math.sin(dLng / 2) ** 2;
-    return 2 * Math.asin(Math.min(1, Math.sqrt(a))) <= horizon;
+  function selectedPinColor() {
+    return SELECTED_PIN.fill;
   }
 
   /* ------------------------------------------------------ conditions grids */
@@ -467,6 +444,23 @@
       .showAtmosphere(true)
       .atmosphereColor("#9fc4ff")
       .atmosphereAltitude(0.17)
+      .pointAltitude((d) => d.alt)
+      .pointRadius((d) => d.radius)
+      .pointResolution(22)
+      .pointColor((d) => d.color)
+      .pointLabel(
+        (d) =>
+          '<div style="font:12px/1.5 Inter,Segoe UI,sans-serif;color:#ece6d8;padding:3px 6px;max-width:200px">' +
+          d.name +
+          '<br><span style="color:#8d97ac">' + d.region + "</span>" +
+          '<br><span style="color:#f5a623;font-weight:600">Grade ' + d.grade + "</span>" +
+          '<span style="color:#8d97ac"> · ' + fmt(d.score, 1) + "</span></div>"
+      )
+      .onPointClick((d) => {
+        if (!d || !d.id) return;
+        suppressGlobeClick();
+        selectSite(d.id);
+      })
       .onGlobeClick(({ lat, lng }) => handleGlobeClick(lat, lng));
 
     const controls = globe.controls();
@@ -478,7 +472,6 @@
     controls.maxDistance = 680;
     controls.autoRotateSpeed = 0.35;
     controls.addEventListener("change", schedulePinScale);
-    controls.addEventListener("change", schedulePinVisibility);
 
     const resize = () => {
       const rect = host.getBoundingClientRect();
@@ -496,18 +489,17 @@
     globe.globeImageUrl("assets/textures/" + state.layer[state.body] + ".jpg");
   }
 
-  let pinScale = 2;
+  /* Moon and Mars use the original 3D sphere pins with pulsing rings; the flat
+     Earth map keeps the lettered teardrop markers. */
+  let pinScale = 1.6;
   let pinScaleTimer = null;
 
   function updatePinScale() {
     if (!globe) return;
     const altitude = (globe.pointOfView() || {}).altitude || 2.2;
-    pinScale = 0.75 + altitude * 0.42;
-    const host = document.getElementById("view-globe");
-    if (!host) return;
-    host.querySelectorAll(".rd-pin").forEach((node) => {
-      node.style.setProperty("--pin-scale", pinScale.toFixed(3));
-    });
+    pinScale = 0.8 + altitude * 0.5;
+    globe.pointRadius((d) => d.radius * pinScale);
+    globe.ringMaxRadius((d) => (d.selected ? 5.2 : 2.4) * (pinScale / 2));
   }
 
   function schedulePinScale() {
@@ -515,94 +507,64 @@
     pinScaleTimer = setTimeout(updatePinScale, 90);
   }
 
-  let pinVisibilityTimer = null;
-  function schedulePinVisibility() {
-    if (!globe) return;
-    if (pinVisibilityTimer) clearTimeout(pinVisibilityTimer);
-    pinVisibilityTimer = setTimeout(() => {
-      globe.htmlElementVisibilityModifier((element, d) => pointIsVisible(d.lat, d.lng));
-    }, 90);
-  }
-
   function renderGlobePoints() {
     if (!globe) return;
     const selectedId = state.selected[state.body];
     const sites = activeSites();
+    const ranked = sortedSites(state.body);
 
-    const data = sites.map((site) => {
+    const points = sites.map((site) => {
       const card = scoreFor(site);
       const isSelected = site.id === selectedId;
-      const color = isSelected ? selectedPinColor() : pinColor(card.letter);
+      const rank = ranked.findIndex((row) => row.site.id === site.id);
       return {
         id: site.id,
+        name: site.name,
+        region: site.region,
+        grade: card.letter,
+        score: card.value,
         lat: site.lat,
         lng: site.lon,
-        isSelected,
-        color,
-        glow: hexToRgba(color, 0.55),
-        letter: card.letter,
-        alt: 0.006,
-        label: site.name + " — grade " + card.letter + " (" + fmt(card.value, 1) + ")"
+        color: isSelected ? "#fff4dd" : sphereColor(card.letter),
+        radius: isSelected ? 1.3 : 0.8,
+        // Elevation stair-steps fan out polar clusters that would otherwise
+        // collapse into one blob.
+        alt: isSelected ? 0.045 : 0.006 + Math.max(0, rank) * 0.0072
       };
     });
 
-    // Polar sites sit within a fraction of a degree of each other. Stack them in
-    // slight elevation steps, fan them out a few pixels, and paint the selected
-    // pin last so the letters stay readable.
-    const CLUSTER_DEG = 1.6;
-    const nearby = (a, b) =>
-      Math.abs(a.lat - b.lat) < CLUSTER_DEG && Math.abs(a.lng - b.lng) < CLUSTER_DEG / Math.cos((a.lat * Math.PI) / 180) + CLUSTER_DEG;
+    globe.pointsData(points);
+    updatePinScale();
+    updateRings();
+  }
 
-    const ordered = data.slice().sort((a, b) => a.lat - b.lat || a.lng - b.lng);
-    ordered.forEach((d, i) => {
-      const group = ordered.filter((other) => other !== d && nearby(d, other));
-      if (!group.length) return;
-      const members = [d].concat(group).sort((a, b) => a.lng - b.lng || a.lat - b.lat);
-      const index = members.indexOf(d);
-      const spread = 23;
-      d.dx = Math.round((index - (members.length - 1) / 2) * spread);
-      d.alt = 0.004 + index * 0.0016;
-    });
-
-    data.sort((a, b) => {
-      if (a.isSelected) return 1;
-      if (b.isSelected) return -1;
-      return 0;
-    });
-    const selectedData = data.find((d) => d.isSelected);
-    if (selectedData) selectedData.alt = 0.03;
-
+  function updateRings() {
+    if (!globe) return;
+    const selectedId = state.selected[state.body];
+    const rings = activeSites().map((site) => ({
+      lat: site.lat,
+      lng: site.lon,
+      selected: site.id === selectedId
+    }));
     if (state.point && state.point.body === state.body) {
-      data.push({
-        id: "__query",
+      rings.push({
         lat: state.point.conditions.lat,
         lng: state.point.conditions.lon,
-        isQuery: true,
-        label: pointLabel(state.point.conditions.lat, state.point.conditions.lon),
-        alt: 0.03
+        selected: true,
+        query: true
       });
     }
-
     globe
-      .htmlElementsData(data)
-      .htmlAltitude((d) => d.alt)
-      .htmlTransitionDuration(0)
-      .htmlElement((d) =>
-        d.isQuery
-          ? queryMarkerElement(d.label)
-          : pinElement({
-              color: d.color,
-              glow: d.glow,
-              selected: d.isSelected,
-              letter: d.letter,
-              label: d.label,
-              dx: d.dx,
-              onClick: () => selectSite(d.id)
-            })
+      .ringsData(rings)
+      .ringColor((d) => (t) =>
+        d.query
+          ? "rgba(93,220,201," + (1 - t) * 0.95 + ")"
+          : d.selected
+          ? "rgba(245,166,35," + (1 - t) * 0.9 + ")"
+          : "rgba(236,230,216," + (1 - t) * 0.22 + ")"
       )
-      .htmlElementVisibilityModifier((element, d) => pointIsVisible(d.lat, d.lng));
-
-    updatePinScale();
+      .ringPropagationSpeed(1.9)
+      .ringRepeatPeriod((d) => (d.selected ? 950 : 2400));
   }
 
   function stageAltitude() {
@@ -630,7 +592,23 @@
 
   function handleGlobeClick(lat, lng) {
     if (Date.now() < globeClickBlockedUntil) return;
+    // Clicking on (or right next to) a graded pin is a selection, not a query.
+    const near = nearestSite(state.body, lat, lng);
+    const tolerance = 2.6;
+    if (near && near.deg <= tolerance) {
+      selectSite(near.site.id);
+      return;
+    }
     queryPoint(state.body, lat, lng);
+  }
+
+  function nearestSite(body, lat, lng) {
+    let best = null;
+    activeSites().forEach((site) => {
+      const d = R.distanceKm(lat, lng, site.lat, site.lon) / 111.32;
+      if (!best || d < best.deg) best = { site, deg: d };
+    });
+    return best;
   }
 
   /* --------------------------------------------------------------- earth */
@@ -1535,6 +1513,8 @@
     queryPoint,
     openPointTwins,
     setBody,
+    globe: () => globe,
+    earthMap: () => earthMap,
     setLayer: (body, layerId) => {
       state.layer[body] = layerId;
       if (state.body === body) {

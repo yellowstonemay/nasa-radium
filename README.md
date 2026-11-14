@@ -65,20 +65,19 @@ which is which.
 
 ### Map pins
 
-Pins are teardrop markers rendered as DOM elements (globe) and Leaflet div-icons (map), so the same
-shape and styling applies to both. Each pin carries its **letter grade** in white on a deep,
-saturated fill — green (A), olive (B), amber (C), orange (D), red (E), deepest red (F) — with a
-white ring, soft glow and drop shadow so they stay readable on both the grey lunar mosaic and the
-bright Mars relief. Pins that sit within ~1.6° of each other are fanned out a few pixels and stacked
-in elevation so their letters do not cover one another, and hovering raises one above the rest.
-The selected pin switches to RADIUM's teal accent, grows slightly and gains a pulsing halo; pins on
-the far hemisphere of the globe are hidden using a horizon-angle test. On Earth the selected site
-also shows a dashed radius ring that shrinks from 120 km to 2.5 km as you zoom in.
+**Moon and Mars keep the original 3D pin system:** glowing spheres sized by grade, with a faint ring
+pulse on every site, an amber pulse on the selection, and a teal pulse at a clicked point. They sit
+in slight elevation steps so polar clusters separate, scale with camera distance, and use a brighter
+grade palette than the flat map because they are read against grey lunar terrain.
 
-**Clicking a pin selects that site. Clicking bare surface is a separate gesture** that drops a small
-teal ring with its coordinates and runs a point query. globe.gl renders HTML markers inside a
-container with `pointer-events: none`, so pins explicitly re-enable pointer events; a pin click also
-suppresses the globe click that follows so the two gestures can never collide.
+**Earth uses teardrop markers** with the letter grade drawn inside — a flat map has room for labels
+that a 3D globe does not. Each carries a deep, saturated fill (green A → darkest red F), a white
+ring, soft glow and drop shadow, plus a dashed radius ring around the selection that shrinks from
+120 km to 2.5 km as you zoom.
+
+Both: clicking a pin selects that site; clicking bare surface drops the click marker and runs a point
+query. On the globe that is enforced twice — the point handler suppresses the globe click, and a
+globe click within 2.6° of a site is treated as a selection rather than a query.
 
 ### Site imagery (real, never generated)
 
