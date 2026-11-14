@@ -4,13 +4,15 @@ NASA Space Apps 2026 (Princeton) · 5-person team · interactive atlas that grad
 candidate sites and finds the Earth locations that behave most like them.
 
 The challenge asks teams to use open Earth/Moon/Mars data to characterise *new* terrestrial
-analogs for future lunar bases and Mars landing sites. RADIUM answers that with three linked views:
+analogs for future lunar bases and Mars landing sites. RADIUM answers that with a globe you can
+query anywhere, plus a graded shortlist on each body:
 
 | View | What it does |
 | --- | --- |
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier |
+| **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs |
 | **Earth** | 2D map of 18 analog candidates, each scored from real climate + terrain data |
-| **Earth Twin mode** | click any Moon/Mars site → the map jumps to Earth and ranks its closest matches |
+| **Earth Twin mode** | any curated site *or* clicked point → the map jumps to Earth and ranks its closest matches |
 
 ## Run it
 
@@ -22,12 +24,13 @@ No build step, no API keys, no accounts. Libraries (globe.gl, Leaflet, Tailwind)
 textures are vendored under `assets/`, so the app still renders if the venue Wi-Fi dies.
 The only live-network features are the optional NASA GIBS Earth layers.
 
-Regenerate the derived data (both scripts are keyless and idempotent):
+Regenerate the derived data (all three scripts are keyless and idempotent):
 
 ```powershell
 python tools\fetch_textures.py     # stitches NASA Trek/GIBS tiles into assets/textures/
+python tools\build_grids.py        # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
 python tools\fetch_earth_data.py   # NASA POWER + ETOPO1 -> assets/earth-metrics.js
-node   tools\check-data.mjs        # sanity check: scores, letters, sources, twin sanity
+node   tools\check-data.mjs        # sanity check: scores, letters, sources, grids, twins
 ```
 
 Screenshots: `node screenshot.mjs http://localhost:3000 [label]` (needs Puppeteer; set
@@ -55,7 +58,21 @@ which is which.
 wind, humidity, precipitation, solar) and samples NOAA ETOPO1 at five points to derive elevation,
 slope and roughness.
 
-**Compiled estimates** — Moon/Mars site metrics and the ice/dust/subsurface indices are
+**Point queries (click anywhere)** — `tools/build_grids.py` downsamples two real PDS digital
+elevation models to a 720×360 (0.5°) grid and derives slope and local relief from them:
+
+| Grid | Source | Measured or modelled |
+| --- | --- | --- |
+| Moon elevation / slope / roughness | LOLA `LDEM_4` (4 ppd, int16) | measured |
+| Mars elevation / slope / roughness | MOLA MEGDR (16 ppd, int16) | measured |
+| Moon day / night temperature | latitude regression on 10 published site temperatures | **modelled** (±8 K / ±10 K) |
+| Mars day / night temperature | latitude + elevation regression on 12 published sites | **modelled** (±5 K / ±4 K) |
+
+Clicking the globe samples those PNG grids client-side. Water ice, dust and comms geometry are not
+resolved at 0.5°, so a point match uses only temperature, day/night swing, slope and roughness, and
+the dossier says so instead of inventing values.
+
+**Compiled estimates** — the curated Moon/Mars dossiers and the ice/dust/subsurface indices are
 literature-derived regional estimates. Each dossier shows a confidence tag and a citation, and
 `assets/data/*-sites.js` holds the raw numbers so they can be replaced with in-situ values.
 
@@ -104,9 +121,10 @@ screenshot.mjs             Puppeteer screenshot helper
 
 ## Next steps (pick by impact)
 
-1. Replace Moon/Mars compiled estimates with values sampled from LOLA/Diviner/MOLA rasters.
-2. Add a high-resolution DEM terrain layer so slope readouts are visible on the globe itself.
-3. Rank the Earth list by *analog similarity* once a Moon/Mars site is selected (already wired for twin mode).
+1. Replace the modelled temperature grids with Diviner / THEMIS gridded products once a clean
+   global file is downloaded (the 0.5° sampler and UI already accept a swapped PNG + meta).
+2. Add a high-resolution DEM terrain mesh so slope is visible on the globe itself.
+3. Let point queries also return nearest *curated* sites and show both in one ranked list.
 4. Add photos per dossier (NASA image API) and a printable report view for the "share findings" objective.
 
 ## Attribution

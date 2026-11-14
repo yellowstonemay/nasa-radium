@@ -117,13 +117,17 @@
     let total = 0;
     const parts = [];
     SIM_VECTOR.forEach((v) => {
-      const delta = Math.min(1, Math.abs(v.norm(a) - v.norm(b)));
+      const na = v.norm(a);
+      const nb = v.norm(b);
+      if (!Number.isFinite(na) || !Number.isFinite(nb)) return; // dimension not resolved here
+      const delta = Math.min(1, Math.abs(na - nb));
       weighted += v.weight * delta * delta;
       total += v.weight;
       parts.push({ label: v.key, match: Math.round((1 - delta) * 100) });
     });
+    if (!total) return { score: 0, parts, used: 0 };
     const score = 100 * (1 - Math.sqrt(weighted / total));
-    return { score: Math.round(clamp(score)), parts };
+    return { score: Math.round(clamp(score)), parts, used: total };
   }
 
   /* --- Data normalisation ------------------------------------------------ */

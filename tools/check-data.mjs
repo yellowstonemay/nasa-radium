@@ -52,6 +52,36 @@ if (!twins.some((id) => ["haughton", "university-valley", "dry-valleys", "gypsum
 const selfMatch = similarity(ridge, sites.earth.find((s) => s.id === "haughton")).score;
 if (selfMatch < 30 || selfMatch > 90) problems.push(`similarity out of range: ${selfMatch}`);
 
+// Grids power the click-anywhere query: files must exist and have valid ranges.
+const gridChecks = [
+  ["moon", "RADIUM_GRID_MOON", { elevationM: [-9000, 11000], slopeDeg: [0, 45], roughnessM: [0, 4] }],
+  ["mars", "RADIUM_GRID_MARS", { elevationM: [-9000, 22000], slopeDeg: [0, 45], roughnessM: [0, 4] }]
+];
+for (const [body, globalName, expectations] of gridChecks) {
+  const metaSrc = await readFile(new URL(`../assets/grids/${body}-meta.js`, import.meta.url), "utf8");
+  const gridWindow = {};
+  new Function("window", metaSrc)(gridWindow);
+  const meta = gridWindow[globalName];
+  if (!meta) {
+    problems.push(`${body}: missing grid meta`);
+    continue;
+  }
+  for (const [key, [lo, hi]] of Object.entries(expectations)) {
+    const layer = meta.layers[key];
+    if (!layer) {
+      problems.push(`${body}: grid layer "${key}" missing`);
+      continue;
+    }
+    if (!(layer.min < layer.max)) problems.push(`${body}.${key}: bad range ${layer.min}..${layer.max}`);
+    if (layer.min < lo || layer.max > hi) problems.push(`${body}.${key}: implausible range ${layer.min}..${layer.max}`);
+  }
+  for (const key of ["tempDayC", "tempNightC"]) {
+    if (!meta.layers[key] || !Number.isFinite(meta.layers[key].rmseK)) {
+      problems.push(`${body}.${key}: missing model error estimate`);
+    }
+  }
+}
+
 if (problems.length) {
   console.error("FAILED\n" + problems.join("\n"));
   process.exit(1);

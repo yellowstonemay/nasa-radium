@@ -47,7 +47,8 @@
     layer: { moon: "moon_base", mars: "mars_base", earth: "earth_base" },
     selected: { moon: null, mars: null, earth: null },
     weights: Object.assign({}, R.DEFAULT_WEIGHTS),
-    twinSource: null
+    twinSource: null,
+    point: null
   };
 
   const $ = (sel) => document.querySelector(sel);
@@ -100,7 +101,11 @@
   }
 
   function setBody(body) {
+    if (state.body === body && state.point) {
+      state.point = null;
+    }
     state.body = body;
+    state.point = null;
     if (body !== "earth") state.twinSource = null;
     $("#view-globe").classList.toggle("hidden", body === "earth");
     $("#view-earth").classList.toggle("hidden", body !== "earth");
@@ -133,7 +138,37 @@
   function renderRail() {
     const list = $("#rail-list");
     list.innerHTML = "";
+
+    if (state.point) {
+      const point = state.point;
+      $("#rail-title").textContent = "Earth matches";
+      $("#rail-count").textContent = point.matches.length;
+      $("#rail-note").textContent =
+        "Closest terrestrial analogs for " + point.site.name +
+        ". Compared on temperature, day/night swing, slope and roughness; water and dust are not resolved at 0.5°.";
+      point.matches.forEach((match, index) => {
+        const btn = el("button", "site-row");
+        btn.type = "button";
+        btn.innerHTML =
+          '<span class="grid h-[2.1rem] w-[2.1rem] shrink-0 place-items-center rounded-[10px] border border-ice/35 bg-ice/[0.10] text-[13px] font-semibold tabular-nums text-ice">' +
+            fmt(match.match.score, 0) + "</span>" +
+          '<span class="min-w-0 flex-1">' +
+            '<span class="block truncate text-[13px] text-bone">' + match.site.name + "</span>" +
+            '<span class="mt-0.5 block truncate text-[11px] text-muted">' + match.site.region + "</span>" +
+          "</span>" +
+          '<span class="text-right">' +
+            '<span class="block text-[10px] uppercase tracking-widest text-muted">match</span>' +
+            '<span class="block text-[10px] uppercase tracking-widest text-muted">#' + (index + 1) + "</span>" +
+          "</span>";
+        btn.addEventListener("click", () => openPointTwins(match.site.id));
+        list.appendChild(btn);
+      });
+      return;
+    }
+
     const rows = sortedSites(state.body);
+    $("#rail-title").textContent = BODY_META[state.body].title;
+    $("#rail-note").textContent = BODY_META[state.body].note;
     $("#rail-count").textContent = rows.length;
     rows.forEach(({ site, card, match }, index) => {
       const btn = el("button", "site-row");
@@ -158,10 +193,130 @@
   }
 
   function selectSite(id) {
+    state.point = null;
     state.selected[state.body] = id;
     renderRail();
     renderDetail();
     highlightOnStage();
+  }
+
+  /* ------------------------------------------------------ conditions grids */
+  const GRID_META = { moon: window.RADIUM_GRID_MOON, mars: window.RADIUM_GRID_MARS };
+  const gridCache = { moon: {}, mars: {} };
+
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("grid failed: " + src));
+      img.src = src;
+    });
+  }
+
+  async function ensureGrids(body) {
+    if (gridCache[body].__ready) return gridCache[body];
+    await Promise.all(
+      Object.entries(GRID_META[body].layers).map(async ([key, layer]) => {
+        const img = await loadImage(layer.file);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d", { willReadFrequently: true });
+        ctx.drawImage(img, 0, 0);
+        gridCache[body][key] = Object.assign({}, layer, {
+          ctx,
+          width: canvas.width,
+          height: canvas.height
+        });
+      })
+    );
+    gridCache[body].__ready = true;
+    return gridCache[body];
+  }
+
+  function sampleLayer(body, key, lat, lon) {
+    const layer = gridCache[body][key];
+    if (!layer) return NaN;
+    const lonN = (((lon + 180) % 360) + 360) % 360;
+    const x = Math.min(layer.width - 1, Math.floor((lonN / 360) * layer.width));
+    const y = Math.min(layer.height - 1, Math.max(0, Math.floor(((90 - lat) / 180) * layer.height)));
+    const byte = layer.ctx.getImageData(x, y, 1, 1).data[0] / 255;
+    const raw = layer.min + byte * (layer.max - layer.min);
+    return key === "roughnessM" ? Math.pow(10, raw) - 1 : raw;
+  }
+
+  function pointLabel(lat, lon) {
+    const latTxt = Math.abs(lat).toFixed(1) + "\u00b0" + (lat >= 0 ? "N" : "S");
+    const lonTxt = Math.abs(lon).toFixed(1) + "\u00b0" + (lon >= 0 ? "E" : "W");
+    return latTxt + " " + lonTxt;
+  }
+
+  async function queryPoint(body, lat, lon) {
+    try {
+      await ensureGrids(body);
+    } catch (err) {
+      console.error(err);
+      return;
+    }
+    const conditions = {
+      lat,
+      lon,
+      elevationM: sampleLayer(body, "elevationM", lat, lon),
+      slopeDeg: sampleLayer(body, "slopeDeg", lat, lon),
+      roughnessM: sampleLayer(body, "roughnessM", lat, lon),
+      tempDayC: sampleLayer(body, "tempDayC", lat, lon),
+      tempNightC: sampleLayer(body, "tempNightC", lat, lon)
+    };
+    const label = pointLabel(lat, lon);
+    const pseudo = {
+      id: "query-point",
+      body,
+      name: label,
+      region: "Custom point query",
+      lat,
+      lon,
+      elevationM: conditions.elevationM,
+      slopeDeg: conditions.slopeDeg,
+      roughnessM: conditions.roughnessM,
+      tempDayC: conditions.tempDayC,
+      tempNightC: conditions.tempNightC,
+      tempMeanC: (conditions.tempDayC + conditions.tempNightC) / 2,
+      pressurePa: NaN,
+      solarKwh: NaN,
+      iceIndex: NaN,
+      dustIndex: NaN,
+      isPoint: true
+    };
+    state.point = {
+      body,
+      conditions,
+      site: pseudo,
+      matches: R.topTwins(SITES.earth, pseudo, 6)
+    };
+    state.selected[body] = null;
+    $("#stage-title").textContent = "Point query · " + label;
+    renderRail();
+    renderDetail();
+    if (globe) {
+      globe.ringsData([{ lat, lng: lon }]);
+      globe
+        .ringColor(() => (t) => "rgba(99,224,206," + (1 - t) * 0.9 + ")")
+        .ringMaxRadius(5)
+        .ringPropagationSpeed(2.2)
+        .ringRepeatPeriod(1200);
+      globe.pointOfView({ lat: lat * 0.9, lng: lon, altitude: stageAltitude() }, 700);
+    }
+  }
+
+  function openPointTwins(matchId) {
+    if (!state.point) return;
+    const twin = state.point.site;
+    const target = matchId || (state.point.matches[0] && state.point.matches[0].site.id);
+    state.twinSource = twin;
+    state.point = null;
+    setBody("earth");
+    renderTwinBanner();
+    if (target) selectSite(target);
   }
 
   /* --------------------------------------------------------------- globe */
@@ -261,16 +416,7 @@
   }
 
   function handleGlobeClick(lat, lng) {
-    const nearest = R.nearestEarth(activeSites(), lat, lng);
-    if (nearest && nearest.km < 900) {
-      selectSite(nearest.site.id);
-      return;
-    }
-    const legend = $("#legend");
-    legend.innerHTML =
-      '<p class="eyebrow">No analyzed site nearby</p>' +
-      '<p class="mt-1 text-[11px] leading-relaxed text-muted">RADIUM grades curated candidate sites, not arbitrary pixels. ' +
-      "Nearest shortlisted site is " + (nearest ? fmt(nearest.km) + " km away (" + nearest.site.name + ")" : "unavailable") + ".</p>";
+    queryPoint(state.body, lat, lng);
   }
 
   /* --------------------------------------------------------------- earth */
@@ -431,8 +577,90 @@
     ]
   };
 
+  function renderPointDetail(host) {
+    const point = state.point;
+    const meta = GRID_META[point.body];
+    const c = point.conditions;
+    const tiles = [
+      ["Day temp", fmt(c.tempDayC, 0) + " °C"],
+      ["Night temp", fmt(c.tempNightC, 0) + " °C"],
+      ["Day/night swing", fmt(c.tempDayC - c.tempNightC, 0) + " K"],
+      ["Slope", fmt(c.slopeDeg, 1) + "°"],
+      ["Roughness", fmt(c.roughnessM, 0) + " m"],
+      ["Elevation", fmt(c.elevationM, 0) + " m"]
+    ]
+      .map(
+        ([label, value]) =>
+          '<div class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">' +
+          '<p class="text-[10px] uppercase tracking-wider text-muted">' + label + "</p>" +
+          '<p class="mt-0.5 text-[13px] tabular-nums text-bone">' + value + "</p></div>"
+      )
+      .join("");
+
+    const rows = point.matches
+      .map(
+        (m, i) =>
+          '<button type="button" class="site-row !py-1.5" data-point-match="' + m.site.id + '">' +
+            '<span class="grid h-8 w-11 shrink-0 place-items-center rounded-lg border border-ice/25 bg-ice/[0.08] text-[12px] tabular-nums text-ice">' + m.match.score + "</span>" +
+            '<span class="min-w-0 flex-1"><span class="block truncate text-[12px] text-bone">' + m.site.name + "</span>" +
+            '<span class="block truncate text-[10px] text-muted">' + m.site.region + "</span></span>" +
+          "</button>"
+      )
+      .join("");
+
+    const tempMeta = meta.layers.tempDayC;
+    const best = point.matches[0];
+    const why = best
+      ? '<div class="mt-2 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">' +
+          '<p class="eyebrow">Why ' + best.site.name + ' matches</p>' +
+          best.match.parts
+            .map((part) => {
+              const color = part.match >= 70 ? "#6fe7b0" : part.match >= 45 ? "#f5c451" : "#de6a45";
+              return (
+                '<div class="mt-1.5 flex items-center gap-2">' +
+                  '<span class="w-[92px] shrink-0 text-[10px] uppercase tracking-wider text-muted">' + part.label + "</span>" +
+                  '<span class="bar flex-1"><span style="width:' + part.match + "%;background:" + color + '"></span></span>' +
+                  '<span class="w-7 text-right text-[10px] tabular-nums text-muted">' + part.match + "</span>" +
+                "</div>"
+              );
+            })
+            .join("") +
+        "</div>"
+      : "";
+    host.innerHTML =
+      '<div class="fade-in">' +
+        '<div class="flex items-start gap-3">' +
+          '<span class="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] border border-ice/40 bg-ice/[0.10] text-ice">' +
+            '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="1.6"/></svg>' +
+          "</span>" +
+          '<div class="min-w-0">' +
+            '<p class="eyebrow">Point query · ' + BODY_META[point.body].label + "</p>" +
+            '<h2 class="mt-1 font-display text-[1.5rem] leading-tight">' + point.site.name + "</h2>" +
+            '<p class="mt-1 text-[11px] text-muted">Sampled from 0.5° mission grids, not a curated pin</p>' +
+          "</div>" +
+        "</div>" +
+        '<div class="mt-3 grid grid-cols-2 gap-1.5">' + tiles + "</div>" +
+        '<div class="mt-3 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">' +
+          '<p class="eyebrow">How this was measured</p>' +
+          '<p class="mt-1 text-[11px] leading-relaxed text-muted">Terrain: ' + meta.provenance.terrain +
+            ". Temperature: " + tempMeta.model + " (RMSE ±" + tempMeta.rmseK + " K).</p>" +
+          '<p class="mt-1 text-[10px] leading-relaxed text-muted/80">Water ice and dust are not resolved at this resolution, so they are excluded from the match rather than guessed.</p>' +
+        "</div>" +
+        '<div class="mt-4"><div class="flex items-center justify-between gap-2">' +
+          '<p class="eyebrow">Closest Earth analogs</p>' +
+          '<button type="button" class="layer-btn !py-1 !text-[10px]" data-point-open="1">Open on Earth</button>' +
+        "</div>" +
+        why +
+        '<div class="mt-2 space-y-1">' + rows + "</div></div>" +
+      "</div>";
+  }
+
   function renderDetail() {
     const host = $("#detail");
+    if (state.point) {
+      renderPointDetail(host);
+      return;
+    }
     const site = selectedSite();
     if (!site) {
       host.innerHTML =
@@ -607,6 +835,8 @@
       ["Viking MDIM 2.1 colour mosaic", "Mars Trek WMTS, 232 m", "https://astrogeology.usgs.gov/search?q=viking"],
       ["NASA POWER climatology", "2001-2020 monthly/annual means (MERRA-2, CERES)", "https://power.larc.nasa.gov/"],
       ["NOAA ETOPO1 elevation", "1 arc-minute global relief via OpenTopoData", "https://www.ngdc.noaa.gov/mgg/global/"],
+      ["LOLA LDEM_4 (Moon DEM)", "4 pixels/deg int16, slope + relief computed here", "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/"],
+      ["MOLA MEGDR (Mars DEM)", "16 pixels/deg int16 topography, slope + relief computed here", "https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/"],
       ["MODIS Terra land surface temperature", "NASA GIBS, 2024-07-01", "https://gibs.earthdata.nasa.gov/"],
       ["VIIRS night lights / Blue Marble", "NASA GIBS", "https://worldview.earthdata.nasa.gov/"]
     ];
@@ -632,6 +862,15 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
+    const pointMatch = event.target.closest("[data-point-match]");
+    if (pointMatch) {
+      openPointTwins(pointMatch.dataset.pointMatch);
+      return;
+    }
+    if (event.target.closest("[data-point-open]")) {
+      openPointTwins(null);
+      return;
+    }
     const twinBtn = event.target.closest("[data-twin]");
     if (twinBtn) {
       selectSite(twinBtn.dataset.twin);
@@ -689,5 +928,5 @@
     }
   });
 
-  window.RADIUM_APP = { state, SITES, selectSite };
+  window.RADIUM_APP = { state, SITES, selectSite, queryPoint, openPointTwins };
 })();

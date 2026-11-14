@@ -22,6 +22,7 @@ build/
 
 # RADIUM scratch + generated caches
 tools/.tilecache/
+tools/.gridcache/
 temporary screenshots/
 shots-*.png
 check-*.png
