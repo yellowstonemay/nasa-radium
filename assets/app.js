@@ -1085,20 +1085,175 @@
   }
 
   function quickActions(site) {
-    if (site.body !== "earth") return "";
+    if (site.body !== "earth") {
+      const has = galleryItems(site).length > 0;
+      return has
+        ? '<div class="mt-2.5 flex flex-wrap gap-1.5">' +
+            '<button type="button" class="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/[0.16] px-3 py-1.5 text-[11px] font-medium text-bone transition hover:border-amber hover:bg-amber/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice active:scale-[0.98]" data-gallery-open="' +
+            site.id + '">Surface view</button>' +
+            '<a class="layer-btn" href="' + site.source.url + '" target="_blank" rel="noopener noreferrer">Mission data ↗</a>' +
+          "</div>"
+        : "";
+    }
+
     const links = googleMapsLinks(site.lat, site.lon);
+    const count = galleryItems(site).length;
     return (
       '<div class="mt-2.5 flex flex-wrap gap-1.5">' +
-        '<a class="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/[0.16] px-3 py-1.5 text-[11px] font-medium text-bone transition hover:border-amber hover:bg-amber/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice active:scale-[0.98]" href="' +
-        links.street + '" target="_blank" rel="noopener noreferrer" title="Open Google Street View at these coordinates">' +
+        '<button type="button" class="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/[0.16] px-3 py-1.5 text-[11px] font-medium text-bone transition hover:border-amber hover:bg-amber/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice active:scale-[0.98]" data-gallery-open="' +
+        site.id + '" title="Open the ground-level image gallery for this site">' +
           '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 1 0-13 0C5.5 15.4 12 21 12 21Z" stroke="currentColor" stroke-width="1.7"/></svg>' +
-          "Street View" +
-        "</a>" +
+          "Street View" + (count ? " · " + count : "") +
+        "</button>" +
+        '<a class="layer-btn" href="' + links.street + '" target="_blank" rel="noopener noreferrer" title="Open Google Street View at these coordinates">Google pano ↗</a>' +
         '<a class="layer-btn" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Maps</a>' +
         '<a class="layer-btn" href="' + links.world + '" target="_blank" rel="noopener noreferrer">Worldview</a>' +
-        '<button type="button" class="layer-btn" data-scroll-imagery="1">Photos</button>' +
       "</div>"
     );
+  }
+
+  /* ------------------------------------------------------- street view */
+  /* A gallery of real, credited imagery for the selected site. Where Google has
+     no panorama, these geotagged and category photos of the actual place are the
+     closest thing to standing there. */
+  const viewer = { site: null, items: [], index: 0 };
+
+  function galleryItems(site) {
+    const items = [];
+    if (site.body === "earth") {
+      const entry = (window.RADIUM_PHOTOS || {})[site.id] || { photos: [] };
+      // Ground photography first: this is the street-level view. The orbital
+      // mosaic is appended for context.
+      (entry.photos || []).forEach((photo) => {
+        items.push({
+          src: photo.file,
+          kind: photo.kind || "Ground view",
+          title: photo.title,
+          credit: photo.author,
+          license: photo.license,
+          licenseUrl: photo.licenseUrl,
+          page: photo.page
+        });
+      });
+      if (entry.satellite) {
+        items.push({
+          src: entry.satellite.file,
+          kind: "Orbital mosaic",
+          title: site.name + " from orbit",
+          credit: entry.satellite.credit,
+          page: entry.satellite.url
+        });
+      }
+      return items;
+    }
+
+    const src = (window.RADIUM_PIN_THUMBS || {})[site.body + ":" + site.id];
+    if (src) {
+      items.push({
+        src,
+        kind: "Surface mosaic",
+        title: site.name + " — 0.5° field of view",
+        credit:
+          site.body === "moon"
+            ? "LRO WAC mosaic, NASA Moon Trek"
+            : "Viking MDIM 2.1 mosaic, NASA Mars Trek",
+        page: site.body === "moon" ? "https://trek.nasa.gov/moon/" : "https://trek.nasa.gov/mars/"
+      });
+    }
+    return items;
+  }
+
+  function openGallery(site, startIndex) {
+    viewer.site = site;
+    viewer.items = galleryItems(site);
+    if (!viewer.items.length) return;
+    viewer.index = Math.max(0, Math.min(viewer.items.length - 1, startIndex || 0));
+    renderGallery();
+    const dialog = $("#viewer-dialog");
+    if (!dialog.open) dialog.showModal();
+  }
+
+  function stepGallery(delta) {
+    if (!viewer.items.length) return;
+    viewer.index = (viewer.index + delta + viewer.items.length) % viewer.items.length;
+    renderGallery();
+  }
+
+  function renderGallery() {
+    const site = viewer.site;
+    const item = viewer.items[viewer.index];
+    if (!site || !item) return;
+
+    const links = site.body === "earth" ? googleMapsLinks(site.lat, site.lon) : null;
+    const credits = [
+      item.credit ? escapeHtml(item.credit) : null,
+      item.license
+        ? item.licenseUrl
+          ? '<a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' +
+            item.licenseUrl + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.license) + "</a>"
+          : escapeHtml(item.license)
+        : null,
+      item.page
+        ? '<a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + item.page +
+          '" target="_blank" rel="noopener noreferrer">source</a>'
+        : null
+    ].filter(Boolean);
+
+    const thumbs = viewer.items
+      .map(
+        (entry, index) =>
+          '<button type="button" data-gallery-thumb="' + index + '" aria-current="' +
+          String(index === viewer.index) + '" aria-label="' + escapeHtml(entry.kind + ": " + entry.title) + '">' +
+            '<img src="' + entry.src + '" alt="" loading="lazy" />' +
+          "</button>"
+      )
+      .join("");
+
+    $("#viewer-body").innerHTML =
+      '<div class="flex items-start justify-between gap-3 px-4 py-3">' +
+        "<div class=\"min-w-0\">" +
+          '<p class="eyebrow">' + BODY_META[site.body].label + " · " + viewer.index + 1 + " of " + viewer.items.length + "</p>" +
+          '<h2 class="mt-0.5 font-display text-xl leading-tight">' + site.name + "</h2>" +
+          '<p class="mt-0.5 text-[11px] tabular-nums text-muted">' +
+            fmt(Math.abs(site.lat), 4) + "° " + (site.lat >= 0 ? "N" : "S") + " · " +
+            fmt(Math.abs(site.lon), 4) + "° " + (site.lon >= 0 ? "E" : "W") +
+          "</p>" +
+        "</div>" +
+        '<button type="button" class="layer-btn shrink-0" data-gallery-close="1">Close</button>' +
+      "</div>" +
+      '<div class="gallery-stage">' +
+        '<img src="' + item.src + '" alt="' + escapeHtml(item.kind + " of " + site.name) + '" />' +
+        '<span class="gallery-badge">' + escapeHtml(item.kind) + "</span>" +
+        (viewer.items.length > 1
+          ? '<button type="button" class="gallery-nav prev" data-gallery-step="-1" aria-label="Previous image">' +
+              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M14.5 5 7.5 12l7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            "</button>" +
+            '<button type="button" class="gallery-nav next" data-gallery-step="1" aria-label="Next image">' +
+              '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M9.5 5l7 7-7 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+            "</button>"
+          : "") +
+      "</div>" +
+      (viewer.items.length > 1 ? '<div class="gallery-thumbs scroll">' + thumbs + "</div>" : "") +
+      '<div class="flex flex-wrap items-center justify-between gap-2 border-t border-white/[0.06] px-4 py-3">' +
+        '<p class="gallery-caption text-[11px] leading-relaxed text-muted">' +
+          escapeHtml(item.title) +
+          (credits.length ? " · " + credits.join(" · ") : "") +
+        "</p>" +
+        (links
+          ? '<div class="flex items-center gap-1.5">' +
+              '<a class="layer-btn" href="' + links.street + '" target="_blank" rel="noopener noreferrer">Google pano ↗</a>' +
+              '<a class="layer-btn" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Maps ↗</a>' +
+            "</div>"
+          : "") +
+      "</div>";
+  }
+
+  function escapeHtml(value) {
+    return String(value == null ? "" : value)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function imageryBlock(site) {
@@ -1128,61 +1283,51 @@
   }
 
   function earthImagery(site) {
-    const entry = (window.RADIUM_PHOTOS || {})[site.id];
-    const links = googleMapsLinks(site.lat, site.lon);
-    const parts = [];
-
-    if (entry && entry.satellite) {
-      parts.push(
-        '<figure class="overflow-hidden rounded-xl border border-white/[0.08]">' +
-          '<img src="' + entry.satellite.file + '" alt="Sentinel-2 satellite view of ' + site.name + '" ' +
-            'loading="lazy" class="h-36 w-full object-cover" />' +
-          '<figcaption class="border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] leading-relaxed text-muted">' +
-            "Satellite · " +
-            '<a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + entry.satellite.url +
-            '" target="_blank" rel="noopener noreferrer">' + entry.satellite.credit + "</a>" +
-          "</figcaption>" +
-        "</figure>"
+    const items = galleryItems(site);
+    if (!items.length) {
+      return (
+        '<div class="mt-4" id="imagery-block">' +
+          '<p class="eyebrow">Street view</p>' +
+          '<p class="mt-1.5 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-[11px] leading-relaxed text-muted">' +
+            "No licensed photography is available for this site yet. Use the satellite views in the map layer instead.</p>" +
+        "</div>"
       );
     }
 
-    if (entry && entry.photos && entry.photos.length) {
-      entry.photos.forEach((photo) => {
-        parts.push(
-          '<figure class="overflow-hidden rounded-xl border border-white/[0.08]">' +
-            '<img src="' + photo.file + '" alt="' + photo.title.replace(/"/g, "&quot;") + '" ' +
-              'loading="lazy" class="h-36 w-full object-cover" />' +
-            '<figcaption class="border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[10px] leading-relaxed text-muted">' +
-              "Ground view · " + photo.author +
-              (photo.licenseUrl
-                ? ' · <a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + photo.licenseUrl +
-                  '" target="_blank" rel="noopener noreferrer">' + photo.license + "</a>"
-                : " · " + photo.license) +
-              ' · <a class="text-ice/90 underline decoration-ice/30 underline-offset-2" href="' + photo.page +
-              '" target="_blank" rel="noopener noreferrer">Commons</a>' +
-            "</figcaption>" +
-          "</figure>"
-        );
-      });
-    }
-
-    const body = parts.length
-      ? parts.join("")
-      : '<p class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-[11px] leading-relaxed text-muted">No licensed ground photography is available for this site. Use the satellite buttons below.</p>';
+    const first = items[0];
+    const thumbs = items
+      .map(
+        (item, index) =>
+          '<button type="button" data-gallery-open="' + site.id + '" data-gallery-index="' + index + '" ' +
+            'aria-label="Open ' + escapeHtml(item.kind) + ' image ' + (index + 1) + '" ' +
+            'class="relative h-14 flex-1 overflow-hidden rounded-lg border border-white/10 transition hover:border-amber/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ice">' +
+            '<img src="' + item.src + '" alt="" loading="lazy" class="h-full w-full object-cover" />' +
+          "</button>"
+      )
+      .join("");
 
     return (
       '<div class="mt-4" id="imagery-block">' +
         '<div class="flex items-baseline justify-between gap-2">' +
-          '<p class="eyebrow">How this site looks</p>' +
-          '<span class="text-[10px] text-muted">real imagery</span>' +
+          '<p class="eyebrow">Street view</p>' +
+          '<span class="text-[10px] text-muted">' + items.length + " real images</span>" +
         "</div>" +
-        '<div class="mt-1.5 space-y-1.5">' + body + "</div>" +
-        '<div class="mt-2 flex flex-wrap gap-1.5">' +
-          '<a class="layer-btn" href="' + links.street + '" target="_blank" rel="noopener noreferrer">Street View ↗</a>' +
-          '<a class="layer-btn" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Google Maps ↗</a>' +
-          '<a class="layer-btn" href="' + links.world + '" target="_blank" rel="noopener noreferrer">NASA Worldview ↗</a>' +
-        "</div>" +
-        '<p class="mt-1.5 text-[10px] leading-relaxed text-muted/80">Street View opens Google Maps at these coordinates; coverage varies by site. Photos are Creative Commons licensed and credited.</p>' +
+        '<button type="button" data-gallery-open="' + site.id + '" data-gallery-index="0" ' +
+          'class="group mt-1.5 block w-full overflow-hidden rounded-xl border border-white/[0.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice">' +
+          '<span class="relative block">' +
+            '<img src="' + first.src + '" alt="' + escapeHtml(first.kind + " of " + site.name) + '" loading="lazy" class="h-40 w-full object-cover transition duration-300 group-hover:scale-[1.03]" />' +
+            '<span class="absolute bottom-2 left-2 rounded-full border border-white/20 bg-[#050a14]/85 px-2 py-0.5 text-[9px] uppercase tracking-[0.14em] text-bone backdrop-blur">' +
+              escapeHtml(first.kind) + "</span>" +
+            '<span class="absolute inset-0 grid place-items-center opacity-0 transition group-hover:opacity-100">' +
+              '<span class="rounded-full border border-white/25 bg-[#050a14]/80 px-3 py-1 text-[10px] uppercase tracking-[0.14em] text-bone backdrop-blur">Open gallery</span>' +
+            "</span>" +
+          "</span>" +
+          '<span class="block border-t border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-left text-[10px] leading-relaxed text-muted">' +
+            escapeHtml(first.credit || "Credit on open") +
+          "</span>" +
+        "</button>" +
+        '<div class="mt-1.5 flex gap-1.5">' + thumbs + "</div>" +
+        '<p class="mt-1.5 text-[10px] leading-relaxed text-muted/80">Ground photography is Creative Commons licensed and credited per image. Google panoramas cover only a minority of these sites, so this gallery is the in-app street view.</p>' +
       "</div>"
     );
   }
@@ -1405,6 +1550,30 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
+    const galleryOpen = event.target.closest("[data-gallery-open]");
+    if (galleryOpen) {
+      const site = Object.values(SITES).flat().find((s) => s.id === galleryOpen.dataset.galleryOpen);
+      if (site) {
+        const index = Number(galleryOpen.dataset.galleryIndex || 0);
+        openGallery(site, Number.isFinite(index) ? index : 0);
+      }
+      return;
+    }
+    const thumb = event.target.closest("[data-gallery-thumb]");
+    if (thumb) {
+      viewer.index = Number(thumb.dataset.galleryThumb);
+      renderGallery();
+      return;
+    }
+    const step = event.target.closest("[data-gallery-step]");
+    if (step) {
+      stepGallery(Number(step.dataset.galleryStep));
+      return;
+    }
+    if (event.target.closest("[data-gallery-close]")) {
+      $("#viewer-dialog").close();
+      return;
+    }
     if (event.target.closest("[data-scroll-imagery]")) {
       const block = document.getElementById("imagery-block");
       if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1499,14 +1668,28 @@
   }
 
   document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+    if ($("#viewer-dialog").open) {
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        stepGallery(1);
+        return;
+      }
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        stepGallery(-1);
+        return;
+      }
+    }
+    if (event.key !== "Escape") return;
+    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
     if (state.twinSource && state.body === "earth") {
       state.twinSource = null;
       renderTwinBanner();
     }
   });
 
-  window.RADIUM_APP = {    state,
+  window.RADIUM_APP = {
+    state,
     SITES,
     selectSite,
     queryPoint,

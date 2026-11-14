@@ -45,6 +45,8 @@ TILE = 256
 SAT_CREDIT = "Sentinel-2 cloudless 2020 - EOX IT Services GmbH (CC BY 4.0)"
 SAT_LINK = "https://s2maps.eu"
 
+MAX_PHOTOS = 6
+
 # Sites whose geotagged photos sit further away than the default radius.
 RADIUS_KM = {
     "dasht-e-kavir": 100,
@@ -91,6 +93,29 @@ TITLE_BLOCKLIST = (
     "flag", "stamp", "coin", "portrait", "poster", "book", "document", "camp",
     "shelter", "dome", "solar panel", "antenna", "telescope", "visitor",
     "parking", "bridge", "dam", "pipeline", "mine", "quarry",
+    # Accommodation and facilities: geotagged near these sites but demonstrate
+    # nothing about the terrain.
+    "housing", "quarters", "lodge", "residence", "cabin", "bunkhouse", "motel",
+    "apartment", "barracks", "headquarters", "kiosk", "toilet", "restroom",
+    "picnic", "bench", "fence", "gate", "exhibit", "display", "interior",
+    "room", "kitchen", "office", "warehouse", "hangar", "garage",
+)
+
+# Close-ups of plants or animals show the biosphere, not the terrain analog.
+SUBJECT_PENALTIES = (
+    "flower", "wildflower", "blossom", "inflorescence", "botany", "flora",
+    "plant", "shrub", "lichen", "moss", "fungus", "insect", "butterfly",
+    "beetle", "bird", "lizard", "mammal", "skeleton", "bone", "skull",
+    "seed", "leaf", "leaves", "petal", "pollen", "herbarium",
+)
+
+# Titles that suggest a scanned archive photo rather than a landscape view today.
+ARCHIVE_HINTS = ("historic", "historical", "archive", "photograph collection", "nara -")
+
+# Titles that are actually looking down from orbit, not standing on the ground.
+ORBITAL_HINTS = (
+    "sentinel", "landsat", "satellite", "from space", "from orbit", "aerial view",
+    "astronaut photograph", "earth observatory", "iss0", "modis", "spot ",
 )
 
 
@@ -203,7 +228,7 @@ def commons_geosearch(site: dict, radius_km: float, limit: int = 6) -> list[dict
     return collect_images(data)
 
 
-def commons_textsearch(site: dict, limit: int = 6) -> list[dict]:
+def commons_textsearch(site: dict, limit: int = 8) -> list[dict]:
     """Fallback for remote sites with no geotagged photos nearby."""
     query = SEARCH_OVERRIDE.get(site["id"]) or site["name"].split(",")[0]
     params = {
@@ -215,18 +240,81 @@ def commons_textsearch(site: dict, limit: int = 6) -> list[dict]:
         "gsrlimit": str(limit * 3),
         "prop": "imageinfo",
         "iiprop": "url|extmetadata|mime|size",
-        "iiurlwidth": "900",
+        "iiurlwidth": "1200",
     }
     data = get_json("https://commons.wikimedia.org/w/api.php?" + urllib.parse.urlencode(params))
     if not data:
         return []
-    # Text search is noisy, so require a word of the query to appear in the title.
     tokens = [t.lower() for t in query.replace("-", " ").split() if len(t) > 3]
     return [
         photo
         for photo in collect_images(data)
         if any(token in photo["title"].lower() for token in tokens)
     ]
+
+
+CATEGORY_BLOCKLIST = (
+    "flora", "fauna", "plants", "plant", "insects", "birds", "animals",
+    "wildlife", "botany", "flowers", "lichens", "mosses", "fungi", "trees",
+    "people", "maps", "diagrams", "history of", "vehicles", "buildings",
+    "signs", "aerial photographs", "satellite images", "maps and diagrams",
+)
+
+
+def commons_categories(site: dict, limit: int = 8) -> list[dict]:
+    """Photos from the Commons categories that match the site.
+
+    Curated categories are the best source of landscape photography for a named
+    place, and they reach well beyond the 10 km geosearch radius.
+    """
+    name = SEARCH_OVERRIDE.get(site["id"]) or site["name"].split(",")[0]
+    found = get_json(
+        "https://commons.wikimedia.org/w/api.php?"
+        + urllib.parse.urlencode(
+            {
+                "action": "query",
+                "format": "json",
+                "list": "search",
+                "srsearch": name,
+                "srnamespace": "14",
+                "srlimit": "6",
+            }
+        )
+    )
+    if not found or "query" not in found:
+        return []
+
+    categories = [row["title"] for row in found["query"]["search"]]
+    tokens = [t.lower() for t in name.replace("-", " ").split() if len(t) > 3]
+    categories = [
+        c
+        for c in categories
+        if any(t in c.lower() for t in tokens)
+        and not any(bad in c.lower() for bad in CATEGORY_BLOCKLIST)
+    ]
+    if not categories:
+        return []
+
+    photos: list[dict] = []
+    for category in categories[:3]:
+        data = get_json(
+            "https://commons.wikimedia.org/w/api.php?"
+            + urllib.parse.urlencode(
+                {
+                    "action": "query",
+                    "format": "json",
+                    "generator": "categorymembers",
+                    "gcmtitle": category,
+                    "gcmtype": "file",
+                    "gcmlimit": str(limit * 2),
+                    "prop": "imageinfo",
+                    "iiprop": "url|extmetadata|mime|size",
+                    "iiurlwidth": "1200",
+                }
+            )
+        )
+        photos.extend(collect_images(data))
+    return photos
 
 
 TITLE_KEYWORDS = (
@@ -242,11 +330,27 @@ TITLE_KEYWORDS = (
 def relevance(title: str, site_name: str) -> int:
     """Rank candidate photos by how much they look like a landscape of the site."""
     low = title.lower()
-    score = sum(1 for word in TITLE_KEYWORDS if word in low)
+    score = 2 * sum(1 for word in TITLE_KEYWORDS if word in low)
     for token in site_name.replace(",", " ").replace("-", " ").lower().split():
         if len(token) > 3 and token in low:
-            score += 3
+            score += 2
+    if any(bad in low for bad in ("portrait", "people", "person", "tourist", "selfie", "crowd")):
+        score -= 5
+    if any(bad in low for bad in SUBJECT_PENALTIES):
+        score -= 5
+    if any(hint in low for hint in ARCHIVE_HINTS):
+        score -= 6
+    # Four-digit 19xx years usually mark a scanned historical photograph.
+    if re.search(r"\b19\d{2}\b", low):
+        score -= 5
+    if is_orbital(title):
+        score -= 3
     return score
+
+
+def is_orbital(title: str) -> bool:
+    low = title.lower()
+    return any(hint in low for hint in ORBITAL_HINTS)
 
 
 def blocked(title: str) -> bool:
@@ -291,7 +395,26 @@ def pick_best(photos: list[dict], site_name: str, count: int = 2) -> list[dict]:
         photos,
         key=lambda p: (-relevance(p["title"], site_name), p.get("order", 0)),
     )
-    return ranked[:count]
+    # Split into photos that describe terrain and photos that merely happen to be
+    # near the site. If there is enough terrain imagery, ignore the rest, so a
+    # gallery never leads with a wildflower or a building.
+    strong = [p for p in ranked if has_terrain_word(p["title"])]
+    weak = [p for p in ranked if not has_terrain_word(p["title"])]
+    ordered = strong + weak if len(strong) < 3 else strong
+    return ordered[:count]
+
+
+def has_terrain_word(title: str) -> bool:
+    low = title.lower()
+    return any(word in low for word in TITLE_KEYWORDS)
+
+
+def title_key(title: str) -> str:
+    """Collapse titles that describe the same subject, e.g. a numbered series."""
+    base = re.sub(r"\([^)]*\)", "", title.lower())
+    base = re.sub(r"[^a-z ]+", " ", base)
+    words = [w for w in base.split() if len(w) > 2]
+    return " ".join(words[:5])
 
 
 def main() -> int:
@@ -311,38 +434,72 @@ def main() -> int:
                 "url": SAT_LINK,
             }
 
-        photos = pick_best(commons_geosearch(site, radius), site["name"], 2)
-        source = "geo"
-        if len(photos) < 2:
-            extra = commons_textsearch(site)
-            source = "geo+text" if photos else "text"
-            seen = {p["title"] for p in photos}
-            merged = photos + [p for p in extra if p["title"] not in seen]
-            photos = pick_best(merged, site["name"], 2)
-        entry["photoSource"] = source if photos else None
+        # Curated categories give the best landscape photography for a named
+        # place; geosearch adds anything else photographed on the ground there.
+        geo = commons_geosearch(site, radius)
+        cats = commons_categories(site)
+        text = commons_textsearch(site) if len(geo) < 3 else []
+        sources = []
+        if geo:
+            sources.append("geo")
+        if cats:
+            sources.append("category")
+        if text:
+            sources.append("text")
 
-        for index, photo in enumerate(photos[:2], start=1):
-            if not photo.get("thumb"):
-                continue
-            data = get(photo["thumb"], timeout=60)
-            if not data:
-                continue
-            image = safe_image(data)
-            if image is None:
-                continue
-            image.thumbnail((900, 900), Image.LANCZOS)
-            name = f"{site['id']}-{index}.jpg"
-            image.save(OUT / name, quality=84, optimize=True)
-            entry["photos"].append(
-                {
-                    "file": f"assets/photos/{name}",
-                    "title": photo["title"],
-                    "author": photo["author"] or "Wikimedia Commons contributor",
-                    "license": photo["license"],
-                    "licenseUrl": photo["licenseUrl"],
-                    "page": photo["page"],
-                }
-            )
+        merged: list[dict] = []
+        seen: set[str] = set()
+        for group in (geo, cats, text):
+            for photo in group:
+                key = photo["title"].lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(photo)
+
+        ranked = pick_best(merged, site["name"], 30)
+
+        def download(passes: int) -> None:
+            """Download candidates, one image per subject first; allow repeats on
+            the second pass so sparse sites still get a gallery."""
+            used_subjects: set[str] = set()
+            for photo in ranked:
+                if len(entry["photos"]) >= MAX_PHOTOS:
+                    return
+                if not photo.get("thumb"):
+                    continue
+                subject = title_key(photo["title"])
+                if passes == 1 and subject in used_subjects:
+                    continue
+                if photo["title"] in {p["title"] for p in entry["photos"]}:
+                    continue
+                data = get(photo["thumb"], timeout=60)
+                if not data:
+                    continue
+                image = safe_image(data)
+                if image is None:
+                    continue
+                used_subjects.add(subject)
+                image.thumbnail((1200, 1200), Image.LANCZOS)
+                index = len(entry["photos"]) + 1
+                name = f"{site['id']}-{index}.jpg"
+                image.save(OUT / name, quality=84, optimize=True)
+                entry["photos"].append(
+                    {
+                        "file": f"assets/photos/{name}",
+                        "title": photo["title"],
+                        "author": photo["author"] or "Wikimedia Commons contributor",
+                        "license": photo["license"],
+                        "licenseUrl": photo["licenseUrl"],
+                        "page": photo["page"],
+                        "kind": "Orbital view" if is_orbital(photo["title"]) else "Ground view",
+                    }
+                )
+
+        download(1)
+        if len(entry["photos"]) < 3:
+            download(2)
+        entry["photoSource"] = "+".join(sources) if entry["photos"] else None
         status = f"sat={'y' if entry['satellite'] else 'n'} photos={len(entry['photos'])}"
         print(f"  {site['id']:20s} {status}", flush=True)
         return site["id"], entry

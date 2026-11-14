@@ -81,23 +81,32 @@ globe click within 2.6° of a site is treated as a selection rather than a query
 
 ### Site imagery (real, never generated)
 
-Every dossier now carries imagery of the actual place:
+Every dossier carries a **street-view style gallery** of the actual place.
 
-| Body | Image | Source |
+| Body | Gallery contents | Source |
 | --- | --- | --- |
 | Moon | 0.5° surface crop at the pin | LRO WAC mosaic (NASA Moon Trek) |
 | Mars | 0.5° surface crop at the pin | Viking MDIM 2.1 (NASA Mars Trek) |
-| Earth | top-down satellite mosaic | Sentinel-2 cloudless 2020, EOX (CC BY 4.0) |
-| Earth | 1–2 ground photos geotagged at the site | Wikimedia Commons, author + licence shown |
+| Earth | 1–6 **ground photographs** of the site | Wikimedia Commons, author + licence per image |
+| Earth | plus one Sentinel-2 orbital mosaic for context | EOX (CC BY 4.0) |
 
-Earth dossiers also link out to **Google Street View / Google Maps** at the exact coordinates
-(no API key needed via the Maps URL API) and **NASA Worldview** for the live daily imagery.
+Open it with the **Street View** button in the dossier (or click the preview image / any
+thumbnail). The viewer shows the full frame with a type badge (`ground view` vs `orbital mosaic`),
+previous/next arrows, a thumbnail strip, per-image credit and licence, and ←/→ keyboard support.
+A "Google pano ↗" button is still there for the minority of sites where Google has a panorama.
 
-`tools/fetch_site_photos.py` downloads the mosaics and photos into `assets/photos/` with a
-manifest of authors and licences, so the demo shows real imagery even with no network.
-Photos are filtered for landscape subjects (infrastructure/signage titles are rejected) and ranked
-by landscape relevance, because Commons geosearch sorts by distance and otherwise returns things
-like a railway wagon next to a desert viewpoint.
+Coverage: **40/40 sites have imagery, 192 ground photographs** across the catalogue
+(38 sites have 3–6 photos; only Bunger Hills and Mistastin are sparse).
+
+`tools/fetch_site_photos.py` downloads mosaics and photos into `assets/photos/` with a manifest of
+authors and licences, so the demo works offline. Candidate selection matters more than volume:
+
+- photos come from Commons **categories** for the place first, then geosearch within 10 km, then text search;
+- facilities (housing, roads, signage, museums), flora/fauna close-ups and scanned archival photos are
+  filtered or down-ranked, as are *Flora of…* / *Fauna of…* categories;
+- if a site has three or more terrain-titled photos, non-terrain photos are dropped entirely;
+- repeated subjects are collapsed, with a second pass only for sparse sites;
+- orbital images are detected and labelled instead of masquerading as ground views.
 
 > NASA's daily MODIS land-surface-temperature and VIIRS night-lights GIBS layers are clear-sky /
 > lights-only products (16% and 0.3% opaque pixels at low zoom), so they render as dust on a dark
