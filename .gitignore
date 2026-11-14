@@ -1,0 +1,30 @@
+# Secrets and local environment configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local editor and operating-system files
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# Common generated files
+node_modules/
+__pycache__/
+.venv/
+venv/
+dist/
+build/
+
+# RADIUM scratch + generated caches
+tools/.tilecache/
+temporary screenshots/
+shots-*.png
+check-*.png
+
+# Local AI-tooling instructions (machine specific paths)
+CLAUDE.md
