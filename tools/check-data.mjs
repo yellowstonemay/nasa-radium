@@ -41,6 +41,9 @@ for (const body of ["moon", "mars", "earth"]) {
     }
     if (!"ABCDEF".includes(card.letter)) problems.push(`${site.id}: bad letter ${card.letter}`);
   }
+  if (sites.earth.length < 30) {
+    problems.push(`earth: only ${sites.earth.length} sites, expected at least 30`);
+  }
 }
 
 // Spot-check the similarity metric against expert-known analogs.

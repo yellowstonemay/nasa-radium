@@ -166,5 +166,203 @@ window.RADIUM_EARTH_SITES = [
     analog: "High-Arctic permafrost with carbonate springs and Mars-like cold-desert weathering.",
     limits: "Marine influence and seasonal snow keep it wetter than Mars.",
     source: { label: "NASA - Arctic Mars Analog Svalbard Expedition", url: "https://www.nasa.gov/analogs/" }
+  },
+  {
+    id: "teide",
+    name: "Teide Caldera, Tenerife",
+    region: "Canary Islands, Spain",
+    iceIndex: 3, dustIndex: 25, subsurfaceScore: 60, scienceScore: 84, biosignatureScore: 10,
+    analog: "High-altitude stratovolcano with lava tubes and ash plains; ESA/NASA use it for planetary field training.",
+    limits: "Oceanic climate and vegetation belts have no lunar counterpart.",
+    source: { label: "ESA - PANGAEA planetary field training", url: "https://www.esa.int/Education/PANGAEA" }
+  },
+  {
+    id: "timanfaya",
+    name: "Timanfaya, Lanzarote",
+    region: "Canary Islands, Spain",
+    iceIndex: 2, dustIndex: 40, subsurfaceScore: 55, scienceScore: 82, biosignatureScore: 8,
+    analog: "Fresh basaltic lava field with cinder cones and lava tubes, used for Mars and Moon geology training.",
+    limits: "Trade-wind moisture and lichen colonisation break the analogy.",
+    source: { label: "ESA - PANGAEA field analogue site", url: "https://www.esa.int/Education/PANGAEA" }
+  },
+  {
+    id: "erta-ale",
+    name: "Erta Ale, Danakil",
+    region: "Afar, Ethiopia",
+    iceIndex: 10, dustIndex: 50, subsurfaceScore: 65, scienceScore: 88, biosignatureScore: 20,
+    analog: "Persistent basaltic lava lake: active analogue for lunar mare emplacement and volcanic outgassing.",
+    limits: "High heat flow and an oxygen atmosphere are anti-analogous to the Moon.",
+    source: { label: "Smithsonian GVP - Erta Ale", url: "https://volcano.si.edu/volcano.cfm?vn=221080" }
+  },
+  {
+    id: "sossusvlei",
+    name: "Sossusvlei, Namib",
+    region: "Namib Desert, Namibia",
+    iceIndex: 2, dustIndex: 65, subsurfaceScore: 20, scienceScore: 80, biosignatureScore: 15,
+    analog: "Oldest desert on Earth with giant linear dunes: analogue for Martian aeolian bedforms and dust transport.",
+    limits: "No ice or permafrost; atmospheric density far higher than Mars.",
+    source: { label: "NASA Earth Observatory - Namib dunes", url: "https://earthobservatory.nasa.gov/" }
+  },
+  {
+    id: "mdrs",
+    name: "Mars Desert Research Station, Utah",
+    region: "San Rafael Swell, USA",
+    iceIndex: 8, dustIndex: 50, subsurfaceScore: 30, scienceScore: 76, biosignatureScore: 12,
+    analog: "Jurassic sandstone and shale badlands used for Mars human-operations simulations since 2001.",
+    limits: "Sedimentary geology and biosphere differ sharply from Mars.",
+    source: { label: "Mars Society - MDRS", url: "https://mdrs.marssociety.org/" }
+  },
+  {
+    id: "lunar-crater-nv",
+    name: "Lunar Crater Volcanic Field, Nevada",
+    region: "Nye County, USA",
+    iceIndex: 5, dustIndex: 55, subsurfaceScore: 50, scienceScore: 82, biosignatureScore: 8,
+    analog: "Maar craters and cinder cones in basalt, used by Apollo crews for volcanic terrain training.",
+    limits: "Playa lakebeds and vegetation are absent from the lunar surface.",
+    source: { label: "BLM - Lunar Crater Volcanic Field", url: "https://www.blm.gov/visit/lunar-crater-volcanic-field" }
+  },
+  {
+    id: "meteor-crater",
+    name: "Meteor Crater, Arizona",
+    region: "Coconino County, USA",
+    iceIndex: 2, dustIndex: 50, subsurfaceScore: 40, scienceScore: 84, biosignatureScore: 5,
+    analog: "Best-preserved terrestrial impact crater: analogue for cratering mechanics and ejecta blankets.",
+    limits: "An oxygen atmosphere and active erosion gate the crater rim differently than on the Moon.",
+    source: { label: "USGS Astrogeology - impact crater studies", url: "https://www.usgs.gov/centers/astrogeology-science-center" }
+  },
+  {
+    id: "bonneville",
+    name: "Bonneville Salt Flats, Utah",
+    region: "Tooele County, USA",
+    iceIndex: 6, dustIndex: 45, subsurfaceScore: 25, scienceScore: 78, biosignatureScore: 10,
+    analog: "Hard halite pan with patterned crust: analogue for evaporite deposition and rover traction tests.",
+    limits: "Seasonal brine and human traffic disturb the surface.",
+    source: { label: "BLM - Bonneville Salt Flats", url: "https://www.blm.gov/visit/bonneville-salt-flats" }
+  },
+  {
+    id: "white-sands",
+    name: "White Sands, New Mexico",
+    region: "Tularosa Basin, USA",
+    iceIndex: 2, dustIndex: 55, subsurfaceScore: 20, scienceScore: 80, biosignatureScore: 8,
+    analog: "Gypsum dunefield with migrating bedforms: analogue for high-albedo Martian sand and dust.",
+    limits: "Gypsum composition is rarer on Mars than basaltic sand.",
+    source: { label: "NPS - White Sands", url: "https://www.nps.gov/whsa/index.htm" }
+  },
+  {
+    id: "mono-lake",
+    name: "Mono Lake, California",
+    region: "Mono Basin, USA",
+    iceIndex: 25, dustIndex: 35, subsurfaceScore: 45, scienceScore: 82, biosignatureScore: 60,
+    analog: "Alkaline lake with tufa towers and arsenic-tolerant microbes: analogue for Mars alkaline habitability.",
+    limits: "Liquid water and a thick atmosphere have no modern Mars equivalent.",
+    source: { label: "USGS - Mono-Inyo Craters", url: "https://www.usgs.gov/volcanoes/mono-inyo-craters" }
+  },
+  {
+    id: "pinacate",
+    name: "Pinacate Volcanic Field, Mexico",
+    region: "Sonora, Mexico",
+    iceIndex: 3, dustIndex: 55, subsurfaceScore: 55, scienceScore: 84, biosignatureScore: 6,
+    analog: "Maar craters, lava tubes and basalt flows used for Apollo astronaut geology training.",
+    limits: "Continental weathering and sparse vegetation break the lunar analogy.",
+    source: { label: "NASA - analog field campaigns", url: "https://www.nasa.gov/analogs/" }
+  },
+  {
+    id: "cuatrocienegas",
+    name: "Cuatrociénegas, Coahuila",
+    region: "Chihuahuan Desert, Mexico",
+    iceIndex: 40, dustIndex: 40, subsurfaceScore: 50, scienceScore: 84, biosignatureScore: 85,
+    analog: "Gypsum-rich pools with stromatolites and ancient lineages: analogue for Mars spring deposits.",
+    limits: "Abundant surface water makes it a poor thermal or aeolian analogue.",
+    source: { label: "NASA Astrobiology - analog environments", url: "https://astrobiology.nasa.gov/" }
+  },
+  {
+    id: "strelley-pool",
+    name: "Strelley Pool, Pilbara",
+    region: "Western Australia",
+    iceIndex: 2, dustIndex: 60, subsurfaceScore: 30, scienceScore: 92, biosignatureScore: 95,
+    analog: "3.4 Ga stromatolite reef: benchmark for what a Martian biosignature outcrop should look like.",
+    limits: "Tropical weathering and vegetation are far from any planetary surface.",
+    source: { label: "Geoscience Australia", url: "https://www.ga.gov.au/" }
+  },
+  {
+    id: "kati-thanda",
+    name: "Kati Thanda–Lake Eyre",
+    region: "South Australia",
+    iceIndex: 10, dustIndex: 60, subsurfaceScore: 25, scienceScore: 80, biosignatureScore: 15,
+    analog: "Ephemeral salt playa with polygons and dust plumes: radar and evaporite analogue.",
+    limits: "Monsoon flooding has no lunar or Martian counterpart.",
+    source: { label: "NASA Earth Observatory - Lake Eyre", url: "https://earthobservatory.nasa.gov/" }
+  },
+  {
+    id: "bunger-hills",
+    name: "Bunger Hills, Antarctica",
+    region: "Wilkes Land, Antarctica",
+    iceIndex: 80, dustIndex: 25, subsurfaceScore: 55, scienceScore: 82, biosignatureScore: 35,
+    analog: "Ice-free polar oasis with saline lakes and permafrost: an under-studied cold-desert analogue.",
+    limits: "Marine connection and summer meltwater exceed Martian conditions.",
+    source: { label: "Australian Antarctic Division", url: "https://www.antarctica.gov.au/" }
+  },
+  {
+    id: "don-juan-pond",
+    name: "Don Juan Pond, Antarctica",
+    region: "Wright Valley, Antarctica",
+    iceIndex: 85, dustIndex: 25, subsurfaceScore: 60, scienceScore: 88, biosignatureScore: 40,
+    analog: "Hypersaline brine that stays liquid far below freezing: analogue for Martian brines and salt hydration.",
+    limits: "A thick ice-cemented substrate changes the mechanics of brine formation.",
+    source: { label: "NASA Astrobiology - Antarctic brines", url: "https://astrobiology.nasa.gov/" }
+  },
+  {
+    id: "askja",
+    name: "Askja Caldera, Iceland",
+    region: "Highlands, Iceland",
+    iceIndex: 45, dustIndex: 50, subsurfaceScore: 45, scienceScore: 86, biosignatureScore: 10,
+    analog: "Caldera, basaltic plains and subglacial eruption products; Apollo crews trained here in 1965 and 1967.",
+    limits: "Hydrothermal groundwater and glacial rivers have no lunar equivalent.",
+    source: { label: "NASA - Iceland astronaut training", url: "https://www.nasa.gov/analogs/" }
+  },
+  {
+    id: "tolbachik",
+    name: "Tolbachik, Kamchatka",
+    region: "Kamchatka, Russia",
+    iceIndex: 15, dustIndex: 45, subsurfaceScore: 50, scienceScore: 86, biosignatureScore: 8,
+    analog: "Large basaltic flood-flow field with cinder cones and lava tubes: the closest scale analogue to lunar mare volcanism.",
+    limits: "Snow cover and fumarolic alteration change the surface mineralogy.",
+    source: { label: "Smithsonian GVP - Tolbachik", url: "https://volcano.si.edu/volcano.cfm?vn=300240" }
+  },
+  {
+    id: "aral-sea-bed",
+    name: "Aral Sea Dry Bed",
+    region: "Kyzylorda, Kazakhstan",
+    iceIndex: 5, dustIndex: 80, subsurfaceScore: 30, scienceScore: 78, biosignatureScore: 8,
+    analog: "A new salt desert formed by desiccation, with salt-encrusted sediments and frequent dust storms.",
+    limits: "Anthropogenic origin and residual groundwater differ from planetary playas.",
+    source: { label: "NASA Earth Observatory - Aral Sea", url: "https://earthobservatory.nasa.gov/world-of-change/AralSea" }
+  },
+  {
+    id: "dash-e-kavir",
+    name: "Dasht-e Kavir",
+    region: "Central Iran",
+    iceIndex: 4, dustIndex: 70, subsurfaceScore: 30, scienceScore: 80, biosignatureScore: 6,
+    analog: "Vast salt desert with sebkha crusts and yardangs: a large, lightly studied Mars structural analogue.",
+    limits: "Seasonal runoff and evaporite hydrology have no modern Mars match.",
+    source: { label: "NASA Earth Observatory", url: "https://earthobservatory.nasa.gov/" }
+  },
+  {
+    id: "mistastin",
+    name: "Mistastin Lake Crater",
+    region: "Labrador, Canada",
+    iceIndex: 55, dustIndex: 30, subsurfaceScore: 50, scienceScore: 88, biosignatureScore: 8,
+    analog: "Impact crater in anorthosite with impact melt glass, used to train Apollo 16 astronauts.",
+    limits: "Lacustrine infill and boreal vegetation limit surface analogy.",
+    source: { label: "USGS Astrogeology - impact craters", url: "https://www.usgs.gov/centers/astrogeology-science-center" }
+  },
+  {
+    id: "sechura",
+    name: "Sechura Desert, Peru",
+    region: "Piura, Peru",
+    iceIndex: 3, dustIndex: 65, subsurfaceScore: 15, scienceScore: 76, biosignatureScore: 10,
+    analog: "Coastal hyper-arid plain with deflation basins and nitrate crusts: under-studied aeolian analogue.",
+    limits: "El Niño flooding events periodically reset the surface.",
+    source: { label: "NASA Earth Observatory - Sechura", url: "https://earthobservatory.nasa.gov/" }
   }
 ];

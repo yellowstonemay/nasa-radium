@@ -11,7 +11,7 @@ query anywhere, plus a graded shortlist on each body:
 | --- | --- |
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs |
-| **Earth** | 2D map of 18 analog candidates, each scored from real climate + terrain data |
+| **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Earth Twin mode** | any curated site *or* clicked point → the map jumps to Earth and ranks its closest matches |
 
 ## Run it

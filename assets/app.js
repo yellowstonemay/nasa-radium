@@ -21,7 +21,7 @@
     },
     earth: {
       label: "Earth", title: "Terrestrial analog candidates", note:
-        "Terrain and climate for every Earth pin are computed from NOAA ETOPO1 samples and the NASA POWER 2001-2020 climatology.",
+        "Climate and terrain for every Earth pin are computed from NASA POWER + NOAA ETOPO1. Grades use the same eight-row rubric, so science- and habitability-rich analogs can outrank sites that are merely easy to land on.",
       center: { lat: 12, lng: 15 }
     }
   };
@@ -130,7 +130,7 @@
 
     if (!state.selected[body]) {
       const top = sortedSites(body)[0];
-      if (top) selectSite(top.site.id);
+      if (top) selectSite(top.site.id, body !== "earth");
     }
   }
 
@@ -192,12 +192,12 @@
     });
   }
 
-  function selectSite(id) {
+  function selectSite(id, fly) {
     state.point = null;
     state.selected[state.body] = id;
     renderRail();
     renderDetail();
-    highlightOnStage();
+    highlightOnStage(fly !== false);
   }
 
   /* ------------------------------------------------------ conditions grids */
@@ -402,15 +402,15 @@
     return Math.min(7, Math.max(1.15, 1 / Math.sin(halfFov * 0.8) - 1));
   }
 
-  function highlightOnStage() {
+  function highlightOnStage(fly = true) {
     const site = selectedSite();
     if (state.body === "earth") {
       renderEarthMarkers();
-      if (site && earthMap) earthMap.flyTo([site.lat, site.lon], Math.max(earthMap.getZoom(), 2.5), { duration: 0.8 });
+      if (fly && site && earthMap) earthMap.flyTo([site.lat, site.lon], Math.max(earthMap.getZoom(), 2.5), { duration: 0.8 });
       return;
     }
     renderGlobePoints();
-    if (site && globe) {
+    if (fly && site && globe) {
       cameraTarget = { lat: site.lat * 0.8, lng: site.lon };
       globe.pointOfView(Object.assign({}, cameraTarget, { altitude: stageAltitude() }), 900);
     }
