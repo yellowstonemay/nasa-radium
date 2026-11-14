@@ -881,6 +881,23 @@
     };
   }
 
+  function quickActions(site) {
+    if (site.body !== "earth") return "";
+    const links = googleMapsLinks(site.lat, site.lon);
+    return (
+      '<div class="mt-2.5 flex flex-wrap gap-1.5">' +
+        '<a class="inline-flex items-center gap-1.5 rounded-full border border-amber/50 bg-amber/[0.16] px-3 py-1.5 text-[11px] font-medium text-bone transition hover:border-amber hover:bg-amber/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ice active:scale-[0.98]" href="' +
+        links.street + '" target="_blank" rel="noopener noreferrer" title="Open Google Street View at these coordinates">' +
+          '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="10" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M12 21s6.5-5.6 6.5-11a6.5 6.5 0 1 0-13 0C5.5 15.4 12 21 12 21Z" stroke="currentColor" stroke-width="1.7"/></svg>' +
+          "Street View" +
+        "</a>" +
+        '<a class="layer-btn" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Maps</a>' +
+        '<a class="layer-btn" href="' + links.world + '" target="_blank" rel="noopener noreferrer">Worldview</a>' +
+        '<button type="button" class="layer-btn" data-scroll-imagery="1">Photos</button>' +
+      "</div>"
+    );
+  }
+
   function imageryBlock(site) {
     if (site.body === "earth") return earthImagery(site);
     return pinImagery(site);
@@ -951,7 +968,7 @@
       : '<p class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-3 text-[11px] leading-relaxed text-muted">No licensed ground photography is available for this site. Use the satellite buttons below.</p>';
 
     return (
-      '<div class="mt-4">' +
+      '<div class="mt-4" id="imagery-block">' +
         '<div class="flex items-baseline justify-between gap-2">' +
           '<p class="eyebrow">How this site looks</p>' +
           '<span class="text-[10px] text-muted">real imagery</span>' +
@@ -1023,6 +1040,7 @@
           '<span class="chip">' + fmt(Math.abs(site.lon), 2) + "° " + (site.lon >= 0 ? "E" : "W") + "</span>" +
           (site.confidence ? '<span class="chip">' + site.confidence + " confidence</span>" : "") +
         "</div>" +
+        quickActions(site) +
         '<div class="mt-3 grid grid-cols-2 gap-1.5">' + measurements + "</div>" +
         '<div class="mt-4"><p class="eyebrow">Rubric sub-scores</p><div class="mt-2 space-y-1.5">' + rubric + "</div></div>" +
         (site.analog
@@ -1182,6 +1200,11 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
+    if (event.target.closest("[data-scroll-imagery]")) {
+      const block = document.getElementById("imagery-block");
+      if (block) block.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     const pointMatch = event.target.closest("[data-point-match]");
     if (pointMatch) {
       openPointTwins(pointMatch.dataset.pointMatch);
