@@ -217,9 +217,7 @@ on purpose: physical climate is interpolated from any surveyed point, but the qu
 exist as team judgements on the 40 catalogued analogs, so they are interpolated from those alone —
 otherwise a screened candidate's derived "science" score would leak into every nearby click.
 
-The result is the same rubric (nine rows on Earth) and the same A–F letters as the curated sites, plus
-two context numbers: how many of the 40 curated analogs it outranks, and the analog-envelope screen
-score at that cell. Fields and rows that are estimated are marked `*`, and since similarity is
+The result is the same rubric (nine rows on Earth) and the same A–F letters as the curated sites, gated by candidate fit, plus two context numbers: how many of the 40 curated analogs it outranks, and the analog-screen score at that cell. Fields and rows that are estimated are marked `*`, and since similarity is
 symmetric the dossier also lists the Moon and Mars sites the spot most resembles.
 
 **Compiled estimates** — the curated Moon/Mars dossiers and the ice/dust/subsurface indices are
@@ -347,6 +345,8 @@ rows; the other bodies leave that dimension `null` and the weighted mean renorma
 and martian score is byte-identical to before this row existed. The weighted mean is the suitability
 score; letters map to A ≥ 70, B ≥ 62, C ≥ 54, D ≥ 46, E ≥ 38, otherwise F. The mission designer only
 changes the weights, so every re-grade is explainable.
+
+**Candidate gate.** A clicked point is not a shortlisted site, and the screen is what separates the two — so a point's letter is scaled by how far inside the analog envelope it sits: `score × (0.45 + 0.55 × min(1, fit / 65))`. Below the 65-point threshold the multiplier falls off, reaching 0.45 at zero fit; at or above it the multiplier is exactly 1, so a passing cell is graded on its merits and the shortlist is never re-ranked by this. Without it a click in Manhattan graded **C 58.6** while discovered candidates sat at 53-65 — a flat, sunny, well-connected lowland outranking places the screen had actually selected. With it Manhattan is **F 28.9**, London **D 49.3** and Paris **D 48.3**, all below every discovered candidate, while a Saharan cell inside the envelope still grades **B 62.6** and is flagged "screened candidate". Shortlist sites carry no `candidateFit`, so their grades are byte-identical to before the gate existed.
 
 **Open land** comes from `tools/build_land_use.py`: MODIS Combined IGBP Land Cover (500 m, annual) is
 pulled from NASA GIBS as colour-decoded WMTS tiles, binned to the same 0.25° grid by area share, and

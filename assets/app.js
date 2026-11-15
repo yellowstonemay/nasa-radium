@@ -1290,7 +1290,8 @@
     slopeDeg: ["earth_slope", "RADIUM_GRID_EARTH_SLOPE"],
     roughnessM: ["earth_relief", "RADIUM_GRID_EARTH_RELIEF"],
     landUse: ["earth_open", "RADIUM_GRID_EARTH_OPEN"],
-    landClass: ["earth_cover", "RADIUM_GRID_EARTH_LANDCOVER"]
+    landClass: ["earth_cover", "RADIUM_GRID_EARTH_LANDCOVER"],
+    precipSeasonality: ["earth_season", "RADIUM_GRID_EARTH_SEASON"]
   };
 
   /* Sampling-only loader: draws the PNG once and keeps the raw bytes, with no
@@ -1356,6 +1357,17 @@
   function pointLabel(lat, lon) {
     return fmt(Math.abs(lat), 2) + "° " + (lat >= 0 ? "N" : "S") + " " +
       fmt(Math.abs(lon), 2) + "° " + (lon >= 0 ? "E" : "W");
+  }
+
+  /* The analog screen is a gate, not a suggestion: a cell below the threshold is
+     not a credible analog, whatever its comfort rows say. Passing is binary
+     (everything at or above the threshold scores 100), so the shortlist keeps
+     its own ordering and only non-candidates are scaled down. */
+  const CANDIDATE_THRESHOLD = 65;
+
+  function candidateFit(screenScore) {
+    if (screenScore == null) return 0;
+    return Math.max(0, Math.min(100, (screenScore / CANDIDATE_THRESHOLD) * 100));
   }
 
   /* Nearest measured points answer two different questions, so they use two
@@ -1427,6 +1439,7 @@
       illuminationPct: 0,
       earthVisibilityPct: 100,
       screenScore: screen,
+      candidateFit: candidateFit(screen),
       measured,
       nearest: nearestMeasured,
       nearestCurated
@@ -1947,9 +1960,11 @@
       ["Roughness (5-pt)", fmt(s.roughnessM, 0) + " m"],
       ["Solar", fmt(s.solarKwh, 1) + " kWh/m²"],
       ["Humidity", fmt(s.humidityPct, 0) + " %"],
+      ["Wind", fmt(s.windMs, 1) + " m/s"],
       ["Precipitation", fmt(s.precipMmDay, 2) + " mm/d"],
       ["Open land", fmt(s.landUse) + " / 100"],
-      ["Land cover", landClassName(s.landClass)]
+      ["Land cover", landClassName(s.landClass)],
+      ["Analog fit", fmt(s.screenFit, 1) + " / 100"]
     ]
   };
 
@@ -2080,8 +2095,10 @@
       tile("Elevation", fmt(site.elevationM, 0) + " m", false),
       tile("Open land", fmt(site.landUse) + " / 100", false),
       tile("Land cover", landClassName(site.landClass), false),
+      tile("Candidate fit", fmt(point.screen, 1) + " / 100", false),
       tile("Solar", fmt(site.solarKwh, 1) + " kWh/m²", true),
-      tile("Humidity", fmt(site.humidityPct, 0) + " %", true)
+      tile("Humidity", fmt(site.humidityPct, 0) + " %", true),
+      tile("Wind", fmt(site.windMs, 1) + " m/s", true)
     ].join("");
 
     // Rows that lean on an inferred field carry an asterisk, exactly like the
@@ -2126,8 +2143,12 @@
           "</div>" +
         "</div>" +
         '<div class="mt-2 flex flex-wrap gap-1.5">' +
-          '<span class="chip' + (point.screen != null && point.screen >= 65 ? " border-ice/40 bg-ice/[0.10] text-ice" : "") + '">' +
-            (point.screen == null ? "not screened" : "screen " + fmt(point.screen, 1) + " / 100") + "</span>" +
+          (point.screen == null
+            ? '<span class="chip">not screened</span>'
+            : point.screen >= CANDIDATE_THRESHOLD
+            ? '<span class="chip border-ice/40 bg-ice/[0.10] text-ice">screened candidate · fit ' + fmt(point.screen, 1) + "</span>"
+            : '<span class="chip border-amber/40 bg-amber/[0.10] text-amber">not a screened candidate · fit ' +
+              fmt(point.screen, 1) + " / " + CANDIDATE_THRESHOLD + "</span>") +
           '<span class="chip">above ' + point.betterThan + " of " + point.total + " curated analogs</span>" +
           '<span class="chip">' + (curatedKm == null ? "no nearby analog" : fmt(curatedKm) + " km to the nearest surveyed analog") + "</span>" +
         "</div>" +
@@ -2142,7 +2163,17 @@
             fmt(curatedKm) + " km). " +
           "</p>" +
           '<p class="mt-2 text-[10px] leading-relaxed text-muted/85">' +
-            "Fields and rubric rows marked * are estimates. Both scales are shown: the screen score measures analog-likeness against the 40 curated sites, the letter grade is the base-suitability rubric, which also weighs water, dust and operations." +
+            (point.screen == null
+              ? ""
+              : point.screen >= CANDIDATE_THRESHOLD
+              ? "This cell passes the " + CANDIDATE_THRESHOLD +
+                "-point analog screen, so the grade above is the raw rubric score. " +
+                "The shortlist still picks one candidate per region, so a cell like this can score well and not be listed."
+              : "The screen is a gate: because this cell scores " + fmt(point.screen, 1) + " against the " +
+                CANDIDATE_THRESHOLD + "-point threshold, its rubric score is scaled by candidate fit (×" +
+                point.card.gate.toFixed(2) + "), so a comfortable place outside the envelope cannot outrank a " +
+                "site the screen actually selected.") +
+            " Fields and rubric rows marked * are estimates." +
           "</p>" +
         "</div>" +
         '<div class="mt-3 flex flex-wrap gap-1.5">' +
@@ -2572,6 +2603,12 @@
         '<div class="mt-4 rounded-xl border border-white/[0.07] p-3">' +
           '<p class="eyebrow">Provenance</p>' +
           '<p class="mt-1 text-[11px] leading-relaxed text-muted">Climate: ' + site.provenance.climate + " · Terrain: " + site.provenance.terrain + "</p>" +
+          (site.screenFit == null
+            ? ""
+            : '<p class="mt-2 text-[11px] leading-relaxed text-muted">Analog fit ' + fmt(site.screenFit, 1) +
+              " / 100 against the envelope of the 40 curated sites. Shortlist sites are reported for context rather than gated by it: " +
+              "this list is expert-selected and deliberately includes sites chosen for geology, habitability or operations rather than climate. " +
+              "The gate only applies to a point you click, where the app is making a new claim.</p>") +
           '<p class="mt-2 text-[10px] leading-relaxed text-muted/80">POWER reports 0.5° grid-cell climatology, so summits read warmer than in-situ stations.</p>' +
         "</div>"
       );
@@ -2645,7 +2682,11 @@
   function renderWeightControls() {
     $("#weight-controls").innerHTML = R.RUBRIC.map((r) => {
       const value = Math.round((state.weights[r.key] || 0) * 100);
-      const scope = r.key === "landuse" ? ' <span class="text-ice/70">(Earth only)</span>' : "";
+      const scope = r.key === "landuse"
+        ? ' <span class="text-ice/70">(Earth only)</span>'
+        : r.key === "analogfit"
+        ? ' <span class="text-ice/70">(clicked points)</span>'
+        : "";
       return (
         '<label class="block">' +
           '<span class="flex items-baseline justify-between gap-2 text-[11px]">' +
@@ -2676,10 +2717,10 @@
 
   const PRESETS = {
     balanced: R.DEFAULT_WEIGHTS,
-    ice: { geology: 0.08, terrain: 0.14, landuse: 0.08, environment: 0.12, resources: 0.34, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.16 },
-    solar: { geology: 0.08, terrain: 0.14, landuse: 0.08, environment: 0.18, resources: 0.10, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.34 },
-    science: { geology: 0.30, terrain: 0.08, landuse: 0.06, environment: 0.06, resources: 0.10, processes: 0.04, habitability: 0.24, subsurface: 0.14, operations: 0.04 },
-    landing: { geology: 0.08, terrain: 0.34, landuse: 0.12, environment: 0.14, resources: 0.08, processes: 0.06, habitability: 0.03, subsurface: 0.03, operations: 0.24 }
+    ice: { geology: 0.08, terrain: 0.14, landuse: 0.08, analogfit: 0.09, environment: 0.12, resources: 0.34, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.16 },
+    solar: { geology: 0.08, terrain: 0.14, landuse: 0.08, analogfit: 0.09, environment: 0.18, resources: 0.10, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.34 },
+    science: { geology: 0.30, terrain: 0.08, landuse: 0.06, analogfit: 0.08, environment: 0.06, resources: 0.10, processes: 0.04, habitability: 0.24, subsurface: 0.14, operations: 0.04 },
+    landing: { geology: 0.08, terrain: 0.34, landuse: 0.12, analogfit: 0.09, environment: 0.14, resources: 0.08, processes: 0.06, habitability: 0.03, subsurface: 0.03, operations: 0.24 }
   };
 
   /* Opacity slider: delegated so the panel can be re-rendered freely. */
@@ -2726,7 +2767,7 @@
         "<li><strong class=\"text-bone\">Compiled estimates</strong> — Moon/Mars site metrics (and the ice/dust/subsurface indices) are literature-derived with a confidence tag and a citation on each dossier.</li>" +
         "<li><strong class=\"text-bone\">Screening output</strong> — the Discovered shortlist comes from scoring 224,663 quarter-degree land cells against the measured envelope of the curated analogs (<code>tools/build_prospect_scan.py</code>). Climate and terrain are measured; ice, dust, subsurface, biosignature and science rows are proxies, and the site is a proposal to survey.</li>" +
       "</ol>" +
-      '<p class="mt-3 text-[12px] leading-relaxed text-muted">Scoring is deliberately explainable: each rubric row is a closed-form function of a measurement (see <code>assets/scoring.js</code>), and the mission designer only changes the weights. The <strong class="text-bone">open land</strong> row exists only on Earth - the Moon and Mars have no owners, farms or cities - so those bodies are still graded on eight rows.</p>' +
+      '<p class="mt-3 text-[12px] leading-relaxed text-muted">Scoring is deliberately explainable: each rubric row is a closed-form function of a measurement (see <code>assets/scoring.js</code>), and the mission designer only changes the weights. The <strong class="text-bone">open land</strong> row exists only on Earth - the Moon and Mars have no owners, farms or cities - so those bodies are still graded on eight rows. A clicked Earth point is additionally gated by the analog screen: below 65 points of analog fit the rubric score is scaled down (to 45% at zero fit), because a place that is not an analog is not a candidate however comfortable it is. Shortlist sites already passed that gate, so their grades are untouched.</p>' +
       '<table class="mt-4 w-full text-left text-[12px]"><thead><tr class="text-[10px] uppercase tracking-wider text-muted">' +
         "<th class=\"pb-1\">Dataset</th><th class=\"pb-1\">Product</th><th class=\"pb-1\"></th></tr></thead><tbody>" +
         dataRows.map((r) =>

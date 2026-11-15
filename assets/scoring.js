@@ -114,8 +114,13 @@
       weighted += value * w[r.key];
       total += w[r.key];
     });
-    const value = total ? weighted / total : 0;
-    return { value, letter: grade(value), dims };
+    const base = total ? weighted / total : 0;
+    // A place that has not passed the analog screen is not a candidate, however
+    // comfortable it is: its grade is scaled by how far it sits inside the
+    // envelope. Shortlist sites carry no candidateFit, so their grades are
+    // untouched - they already passed.
+    const value = site.candidateFit == null ? base : base * (0.45 + 0.55 * clamp(site.candidateFit, 0, 100) / 100);
+    return { value, letter: grade(value), dims, base, gate: base ? value / base : 1 };
   }
 
   /* --- Earth Twin similarity -------------------------------------------- */
@@ -163,6 +168,7 @@
 
     const metrics = window.RADIUM_EARTH || {};
     const landuse = window.RADIUM_EARTH_LANDUSE || {};
+    const analog = window.RADIUM_EARTH_ANALOG || {};
     const earth = (window.RADIUM_EARTH_SITES || [])
       .map((curated) => {
         const m = metrics[curated.id];
@@ -178,6 +184,7 @@
             roughnessM: m.roughnessM || 0,
             landUse: land.open,
             landClass: land.class,
+            screenFit: analog[curated.id],
             tempDayC: m.tempMaxC,
             tempNightC: m.tempMinC,
             tempMeanC: m.tempMeanC,
@@ -206,12 +213,14 @@
      published observations. */
   function buildProspects() {
     const landuse = window.RADIUM_EARTH_LANDUSE || {};
+    const analog = window.RADIUM_EARTH_ANALOG || {};
     return (window.RADIUM_PROSPECT_SITES || []).map((p) =>
       withDims(
         "earth",
         Object.assign({}, p, {
           landUse: (landuse[p.id] || {}).open,
           landClass: (landuse[p.id] || {}).class,
+          screenFit: p.screenScore != null ? p.screenScore : analog[p.id],
           tempDayC: p.tempMaxC,
           tempNightC: p.tempMinC,
           pressurePa: (p.pressureKPa || 0) * 1000,

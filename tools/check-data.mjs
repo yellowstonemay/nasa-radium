@@ -22,6 +22,7 @@ const sandbox = { window: { RADIUM_MOON: await load("data/moon-sites.js", "RADIU
   RADIUM_EARTH_SITES: await load("data/earth-sites.js", "RADIUM_EARTH_SITES"),
   RADIUM_EARTH: earthMetrics,
   RADIUM_EARTH_LANDUSE: landuse,
+  RADIUM_EARTH_ANALOG: await load("data/earth-analog.js", "RADIUM_EARTH_ANALOG"),
   RADIUM_PROSPECT_SITES: prospects } };
 new Function("window", scoringSource)(sandbox.window);
 
@@ -35,11 +36,14 @@ for (const body of ["moon", "mars", "earth", "discovered"]) {
     if (!site.source || !site.source.url) problems.push(`${site.id}: missing source`);
     if (!Number.isFinite(site.lat) || !Number.isFinite(site.lon)) problems.push(`${site.id}: bad coordinates`);
     for (const [key, value] of Object.entries(site.dims)) {
-      // Land use is an Earth-only row; the other bodies carry null on purpose.
+      // Land use is an Earth-only row; candidate fit is scored only for clicked
+      // points, because the shortlist has already passed the screen. The other
+      // bodies carry null on both.
       if (key === "landuse" && body !== "earth" && body !== "discovered") {
         if (value !== null) problems.push(`${site.id}: land use should not exist off Earth`);
         continue;
       }
+      if (key === "analogfit") continue;
       if (!Number.isFinite(value) || value < 0 || value > 100) {
         problems.push(`${site.id}: dim "${key}" = ${value}`);
       }
@@ -170,6 +174,7 @@ const earthFields = {
   "earth-precip-meta.js": ["RADIUM_GRID_EARTH_PRECIP", 0, 12],
   "earth-slope-meta.js": ["RADIUM_GRID_EARTH_SLOPE", 0, 40],
   "earth-relief-meta.js": ["RADIUM_GRID_EARTH_RELIEF", 0, 1200],
+  "earth-season-meta.js": ["RADIUM_GRID_EARTH_SEASON", 0, 200],
   "earth-open-meta.js": ["RADIUM_GRID_EARTH_OPEN", 0, 100],
   "earth-landcover-meta.js": ["RADIUM_GRID_EARTH_LANDCOVER", 0, 17]
 };
@@ -186,6 +191,23 @@ for (const [file, [globalName, lo, hi]] of Object.entries(earthFields)) {
   if (meta.width !== 1440 || meta.height !== 1440) problems.push(`${file}: raster is not 1440x1440`);
   if (meta.min !== lo || meta.max !== hi) problems.push(`${file}: decode range ${meta.min}..${meta.max}, grader expects ${lo}..${hi}`);
 }
+
+// The candidate gate is what stops a comfortable cell from outranking a site the
+// analog screen actually selected, so it is tested directly: a point at zero fit
+// keeps 45% of its rubric score, a point at the threshold keeps all of it, and
+// shortlist sites (no candidateFit) are untouched.
+const gateProbe = sites.earth[0];
+const baseScore = scoreSite(gateProbe, DEFAULT_WEIGHTS).value;
+const zeroFit = scoreSite(Object.assign({}, gateProbe, { candidateFit: 0 }), DEFAULT_WEIGHTS).value;
+const fullFit = scoreSite(Object.assign({}, gateProbe, { candidateFit: 100 }), DEFAULT_WEIGHTS).value;
+if (Math.abs(zeroFit - baseScore * 0.45) > 0.01) {
+  problems.push(`candidate gate: zero fit scored ${zeroFit.toFixed(2)}, expected ${(baseScore * 0.45).toFixed(2)}`);
+}
+if (Math.abs(fullFit - baseScore) > 0.01) {
+  problems.push(`candidate gate: full fit scored ${fullFit.toFixed(2)}, expected ${baseScore.toFixed(2)}`);
+}
+const gatedAbove = sites.discovered.concat(sites.earth).every((s) => scoreSite(s, DEFAULT_WEIGHTS).gate === 1);
+if (!gatedAbove) problems.push("shortlist sites must not be gated by candidate fit");
 
 if (problems.length) {
   console.error("FAILED\n" + problems.join("\n"));
