@@ -38,7 +38,7 @@
     },
     earth: {
       label: "Earth", title: "Terrestrial analog candidates", note:
-        "Climate and terrain for every Earth pin are computed from NASA POWER + NOAA ETOPO1. Grades use the same eight-row rubric, so science- and habitability-rich analogs can outrank sites that are merely easy to land on.",
+        "Climate and terrain for every Earth pin are computed from NASA POWER + NOAA ETOPO1. Grades use the same eight-row rubric, so science- and habitability-rich analogs can outrank sites that are merely easy to land on. Click any point on the map to grade that coordinate too.",
       center: { lat: 12, lng: 15 }
     }
   };
@@ -1892,6 +1892,7 @@
       '<p class="mt-1 text-[11px] leading-relaxed text-bone">' +
         (layer ? layer.note : baseItem ? baseItem.note : "") + "</p>" +
       scale +
+      '<p class="mt-1 text-[10px] leading-relaxed text-ice/80">Click any land point to grade it on the same rubric.</p>' +
       '<p class="mt-1 text-[10px] uppercase tracking-widest text-muted">' +
         (state.base.earth === "earth_base"
           ? "Imagery ? Esri, Maxar, Earthstar Geographics"
