@@ -130,13 +130,18 @@ rail. The pins are DOM elements anchored to the sphere, so they keep the physics
 3D points readable — they rotate with the body and fade out as their ground point passes behind the
 limb — without the solid cylinders that used to render as coloured bars at the limb.
 
-Three details keep 25 densely-packed polar sites legible:
+Four details keep 25 densely-packed polar sites legible:
 
 * **Fan placement.** The best-ranked pin takes the slot straight above its dot; each pin after it
   takes the nearest free slot sideways or a row higher, and the leader line is redrawn to follow.
   Pins that cannot fit fold their chip away but keep the dot, so every location stays marked.
 * **Scale with zoom.** Chips shrink as the camera pulls back and grow as you close in, and the fan is
   re-solved after every camera move (throttled to 70 ms).
+* **Close-up on selection.** Picking a spot — its pin, or its row in the rail — centres the camera
+  on it and flies in to survey range (0.85 globe radii), so the terrain under the site fills the
+  stage and neighbouring chips spread apart. A camera already closer than that is left alone, so
+  re-picking a pin never pulls back out, and the automatic selection that arrives with a body keeps
+  the whole-body view instead.
 * **Name plate.** The selected pin wears its site name beside its chip, placed on whichever side is
   free; hovering any dot (including a folded one) reveals its chip.
 
@@ -147,12 +152,13 @@ that a 3D globe does not. Each carries a deep, saturated fill (green A → darke
 ring, soft glow and drop shadow, plus a dashed radius ring around the selection that shrinks from
 120 km to 2.5 km as you zoom.
 
-Both: clicking a pin selects that site; clicking bare surface drops the click marker and runs a point
-query. On the globe that is enforced twice — the point handler suppresses the globe click, and a
-globe click within 2.6° of a site is treated as a selection rather than a query. Both stages also
-carry a **zoom stepper** at the bottom right: Leaflet's own control on Earth, and a matching
-`+ / −` group that walks the globe camera in fixed altitude ratios (0.45–5.6 globe radii) and
-disables itself at either limit.
+Both: clicking a pin selects that site and takes the stage to it — the globe closes in as described
+above, the flat map flies to the marker at zoom ≥ 2.5. Clicking bare surface drops the click marker
+and runs a point query. On the globe that is enforced twice — the point handler suppresses the globe
+click, and a globe click within 2.6° of a site is treated as a selection rather than a query. Both
+stages also carry a **zoom stepper** at the bottom right: Leaflet's own control on Earth, and a
+matching `+ / −` group that walks the globe camera in fixed altitude ratios (0.45–5.6 globe radii)
+and disables itself at either limit.
 
 ### Site imagery (real, never generated)
 

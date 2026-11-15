@@ -387,7 +387,7 @@
 
     if (!state.selected[body]) {
       const top = sortedSites(body)[0];
-      if (top) selectSite(top.site.id, body !== "earth");
+      if (top) selectSite(top.site.id, body !== "earth", false);
     }
   }
 
@@ -524,7 +524,7 @@
     );
   }
 
-  function selectSite(id, fly) {
+  function selectSite(id, fly, focus) {
     const pool = state.body === "earth" ? twinnableSites() : SITES[state.body];
     if (!pool || !pool.some((s) => s.id === id)) {
       // Safety net: an id from another body is never selected silently.
@@ -543,7 +543,7 @@
     updateStageTitle();
     renderRail();
     renderDetail();
-    highlightOnStage(fly !== false);
+    highlightOnStage(fly !== false, focus);
   }
 
   /* ------------------------------------------------------------------ pins */
@@ -1023,6 +1023,11 @@
      0.4-5.8; a fixed ratio gives even steps at every scale. */
   const GLOBE_ALT = { min: 0.45, max: 5.6, ratio: 0.72 };
 
+  /* Survey range for a selected base spot: close enough that the surrounding
+     terrain fills the stage and the crowd of neighbouring chips spreads out,
+     far enough to keep the site's own neighbourhood in context. */
+  const FOCUS_ALT = 0.85;
+
   function nudgeGlobeZoom(direction) {
     if (!globe) return;
     const pov = globe.pointOfView() || {};
@@ -1061,7 +1066,11 @@
     return Math.min(7, Math.max(1.15, 1 / Math.sin(halfFov * 0.8) - 1));
   }
 
-  function highlightOnStage(fly = true) {
+  /* Fly to the selection. A user's pick is a close-up: the camera centres on the
+     site and closes to survey range, which also spreads the neighbouring chips
+     apart. The automatic selection that lands with a body keeps the whole-body
+     view, so the first look at a globe still shows every pin. */
+  function highlightOnStage(fly = true, focus = true) {
     const site = selectedSite();
     if (state.body === "earth") {
       renderEarthMarkers();
@@ -1070,8 +1079,12 @@
     }
     renderGlobePoints();
     if (fly && site && globe) {
-      cameraTarget = { lat: site.lat * 0.8, lng: site.lon };
-      flyTo(cameraTarget, 900);
+      cameraTarget = { lat: site.lat, lng: site.lon };
+      const pov = globe.pointOfView() || {};
+      const current = pov.altitude == null ? stageAltitude() : pov.altitude;
+      // Never pull back out of a closer view the user already chose.
+      const altitude = focus ? Math.min(current, FOCUS_ALT) : stageAltitude();
+      flyTo(cameraTarget, 950, altitude);
     }
   }
 
@@ -3173,7 +3186,7 @@
     if (best) selectSite(best.site.id, false);
   } else if (state.body !== "earth" && !state.selected[state.body]) {
     const top = sortedSites(state.body)[0];
-    if (top) selectSite(top.site.id, true);
+    if (top) selectSite(top.site.id, true, false);
   }
 
   document.addEventListener("keydown", (event) => {
