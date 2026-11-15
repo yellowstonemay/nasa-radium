@@ -230,6 +230,14 @@ closed-form functions of the measurements in `assets/scoring.js`. The weighted m
 suitability score; letters map to A ≥ 70, B ≥ 62, C ≥ 54, D ≥ 46, E ≥ 38, otherwise F. The mission
 designer only changes the weights, so every re-grade is explainable.
 
+**Two numbers, two questions.** The Discovered tab used to print the *screen* score in the same slot
+where every other tab prints the *grade* score, so a 99 could sit next to a `C` badge while a 66
+showed `B`. The shortlist number is now always the grade, and the screen score is shown separately
+under the site name (`Russia · screen 66.0`). They can disagree because they answer different
+questions: the screen asks "does this cell's climate and terrain match the catalogued envelope?",
+while the grade asks "is this a good base?" — the grade also weighs ice, dust and operations, so a
+warm desert the screen loves can grade modestly for having no water ice and a 50 K day/night swing.
+
 Earth Twin similarity is a weighted normalised distance over temperature, day/night swing, solar,
 slope, roughness, water/ice and dust, reported 0–100.
 
