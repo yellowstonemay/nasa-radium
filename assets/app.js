@@ -15,8 +15,8 @@
     F: "#7f1d1d"  // deepest red
   };
   const SELECTED_PIN = { fill: "#5ddcc9", ink: "#06302b" };
-  /* Bright neon palette for the outlined grade badges in the rail and dossiers.
-     The pins keep the deeper palette because they carry white letters. */
+  /* Bright neon palette for the outlined grade badges in the rail, the dossiers
+     and the sphere pins. */
   const GRADE_NEON = {
     A: "#4ade80",
     B: "#a3e635",
@@ -24,15 +24,6 @@
     D: "#fb923c",
     E: "#f87171",
     F: "#ef4444"
-  };
-  /* 3D sphere pins read better slightly brighter than flat-map markers. */
-  const SPHERE_COLOR = {
-    A: "#22c55e",
-    B: "#84cc16",
-    C: "#f59e0b",
-    D: "#ea580c",
-    E: "#dc2626",
-    F: "#991b1b"
   };
   const BODY_META = {
     moon: {
@@ -42,7 +33,7 @@
     },
     mars: {
       label: "Mars", title: "Mars landing suitability", note:
-        "Graded from MOLA relief, published ice mapping and atmospheric/dust climatology. Mars scores assume relay comms, not direct-to-Earth.",
+        "24 candidates, from Jezero and Gale to the shallow mid-latitude ice belts, a 1.8 km polar ice cap and confirmed lava-tube skylights. Elevation is MOLA, temperature is the latitude+elevation model, ice and dust come from published mapping. Mars scores assume relay comms, not direct-to-Earth.",
       center: { lat: 12, lng: 90, altitude: 1.9 }
     },
     earth: {
@@ -484,10 +475,6 @@
     );
   }
 
-  function sphereColor(letter) {
-    return SPHERE_COLOR[letter] || SPHERE_COLOR.C;
-  }
-
   function selectedPinColor() {
     return SELECTED_PIN.fill;
   }
@@ -592,7 +579,7 @@
     renderDetail();
     if (globe) {
       renderGlobePoints();
-      globe.pointOfView({ lat: lat * 0.9, lng: lon, altitude: stageAltitude() }, 700);
+      flyTo({ lat: lat * 0.9, lng: lon }, 700);
     }
   }
 
@@ -625,22 +612,14 @@
       .showAtmosphere(true)
       .atmosphereColor("#9fc4ff")
       .atmosphereAltitude(0.17)
-      .pointAltitude((d) => d.alt)
-      .pointRadius((d) => d.radius)
-      .pointResolution(22)
-      .pointColor((d) => d.color)
-      .pointLabel(
-        (d) =>
-          '<div style="font:12px/1.5 Inter,Segoe UI,sans-serif;color:#ece6d8;padding:3px 6px;max-width:200px">' +
-          d.name +
-          '<br><span style="color:#8d97ac">' + d.region + "</span>" +
-          '<br><span style="color:#f5a623;font-weight:600">Grade ' + d.grade + "</span>" +
-          '<span style="color:#8d97ac"> · ' + fmt(d.score, 1) + "</span></div>"
-      )
-      .onPointClick((d) => {
-        if (!d || !d.id) return;
-        suppressGlobeClick();
-        selectSite(d.id);
+      .htmlAltitude(0.004)
+      .htmlTransitionDuration(0)
+      .htmlElement((d) => d.node)
+      // globe.gl hides an element once its anchor drops behind the limb, which is
+      // exactly the physics the old WebGL points had; we only have to restyle it.
+      .htmlElementVisibilityModifier((element, visible) => {
+        element.classList.toggle("is-behind", !visible);
+        if (visible) schedulePinLayout();
       })
       .onGlobeClick(({ lat, lng }) => handleGlobeClick(lat, lng));
 
@@ -652,7 +631,7 @@
     controls.minDistance = 140;
     controls.maxDistance = 680;
     controls.autoRotateSpeed = 0.35;
-    controls.addEventListener("change", schedulePinScale);
+    controls.addEventListener("change", schedulePinLayout);
 
     const resize = () => {
       const rect = host.getBoundingClientRect();
@@ -670,64 +649,181 @@
     globe.globeImageUrl("assets/textures/" + state.layer[state.body] + ".jpg");
   }
 
-  /* Moon and Mars use the original 3D sphere pins with pulsing rings; the flat
-     Earth map keeps the lettered teardrop markers. */
-  let pinScale = 1.6;
-  let pinScaleTimer = null;
+  /* Moon and Mars are marked with projected survey pins (ground dot, hairline
+     stem, neon grade chip); the flat Earth map keeps the lettered teardrop
+     markers. */
+  const pinNodes = new Map();
+  let pinLayoutTimer = null;
 
-  function updatePinScale() {
-    if (!globe) return;
-    const altitude = (globe.pointOfView() || {}).altitude || 2.2;
-    pinScale = 0.8 + altitude * 0.5;
-    globe.pointRadius((d) => d.radius * pinScale);
-    globe.ringMaxRadius((d) => (d.selected ? 5.2 : 2.4) * (pinScale / 2));
+  /* Preferred chip slots: straight up first, then sideways, then a row higher.
+     Offsets stay small so a leader never reaches across the stage. */
+  const PIN_SLOTS = [[0, 0], [0, 1], [-1, 0], [1, 0], [-1, 1], [1, 1], [0, 2], [-2, 0], [2, 0], [-2, 1], [2, 1]];
+  const PIN_SLOT_LIMIT = 76;   // px between a dot and its chip before we give up
+
+  function pinNode(site) {
+    const box = document.createElement("div");
+    box.className = "gpin";
+    box.innerHTML =
+      '<span class="gpin-stem"></span>' +
+      '<span class="gpin-chip"></span>' +
+      '<span class="gpin-plaque"></span>' +
+      '<span class="gpin-dot"></span>';
+    const hit = document.createElement("button");
+    hit.type = "button";
+    hit.className = "gpin-hit";
+    hit.setAttribute("aria-label", "Select " + site.name);
+    hit.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      selectSite(site.id);
+    });
+    box.appendChild(hit);
+    return box;
   }
 
-  function schedulePinScale() {
-    if (pinScaleTimer) clearTimeout(pinScaleTimer);
-    pinScaleTimer = setTimeout(updatePinScale, 90);
+  /* Two things happen after every camera move: pins scale with the zoom, and
+     pins whose dots would land on top of a better-ranked pin fold their chip
+     away. The dot stays, so no location ever loses its marker. */
+  function updatePinLayout() {
+    if (!globe) return;
+    const host = document.getElementById("view-globe");
+    if (!host) return;
+    const rect = host.getBoundingClientRect();
+    if (rect.width < 40 || rect.height < 40) return;
+
+    const altitude = (globe.pointOfView() || {}).altitude || 2.4;
+    host.style.setProperty("--gpin-scale", (1.24 - altitude * 0.14).toFixed(3));
+    globe.ringMaxRadius((d) => (d.selected ? 3.6 : 2.4));
+
+    // Chips are placed by a tiny greedy force layout: the best-ranked pin tries
+    // to sit straight above its dot, and each pin after it takes the nearest
+    // free slot in a fan (sideways offsets, then higher rows). Anything that
+    // cannot fit keeps its ground dot only, so no location loses its marker.
+    // Anchors come from the projected dot itself — globe.gl's getScreenCoords
+    // disagrees with what its own CSS2D layer draws.
+    const scale = Number(host.style.getPropertyValue("--gpin-scale")) || 1;
+    const chipW = 26 * scale;
+    const chipH = 21 * scale;
+    const colStep = chipW + 6;
+    const rowStep = chipH + 8;
+    const baseLift = 16;
+    const ordered = (globe.htmlElementsData() || []).slice().sort((a, b) => a.order - b.order);
+    const placed = [];
+    ordered.forEach((d) => {
+      const node = d.node;
+      if (node.classList.contains("is-behind")) {
+        node.classList.remove("is-crowded");
+        return;
+      }
+      const dot = node.querySelector(".gpin-dot").getBoundingClientRect();
+      if (!dot.width) return;
+      const at = {
+        x: dot.left + dot.width / 2 - rect.left,
+        y: dot.top + dot.height / 2 - rect.top
+      };
+      let slot = null;
+      for (const [col, row] of PIN_SLOTS) {
+        const dx = col * colStep;
+        const chipY = baseLift + row * rowStep;
+        if (Math.hypot(dx, chipY) > PIN_SLOT_LIMIT) continue;
+        const box = { x: at.x + dx - chipW / 2, y: at.y - chipY - chipH, w: chipW, h: chipH };
+        const clash = placed.some(
+          (q) => box.x < q.x + q.w + 3 && q.x < box.x + box.w + 3 && box.y < q.y + q.h + 3 && q.y < box.y + box.h + 3
+        );
+        if (!clash) {
+          slot = { dx, chipY, box };
+          break;
+        }
+      }
+      if (!slot) {
+        node.classList.add("is-crowded");
+        return;
+      }
+      placed.push(slot.box);
+      node.classList.remove("is-crowded");
+      const length = Math.hypot(slot.dx, slot.chipY);
+      const angle = (Math.atan2(slot.dx, slot.chipY) * 180) / Math.PI;
+      node.style.setProperty("--dx", slot.dx.toFixed(1) + "px");
+      node.style.setProperty("--chip-y", slot.chipY.toFixed(1) + "px");
+      node.style.setProperty("--stem-h", length.toFixed(1) + "px");
+      node.style.setProperty("--stem-rot", angle.toFixed(1) + "deg");
+      node.style.setProperty("--stem-fade", Math.max(0.5, 0.9 - length / 180).toFixed(3));
+    });
+
+    placeSelectedPlaque(ordered, placed, rect);
+  }
+
+  /* The selected pin wears a name plate. It is placed last, beside whichever
+     side of its chip is free, so the text never sits on top of the cluster. */
+  function placeSelectedPlaque(ordered, placed, rect) {
+    const node = (ordered.find((d) => d.node.classList.contains("is-selected")) || {}).node;
+    if (!node || node.classList.contains("is-crowded") || node.classList.contains("is-behind")) return;
+    const chip = node.querySelector(".gpin-chip").getBoundingClientRect();
+    const plaque = node.querySelector(".gpin-plaque").getBoundingClientRect();
+    const dot = node.querySelector(".gpin-dot").getBoundingClientRect();
+    const ax = dot.left + dot.width / 2 - rect.left;
+    const ay = dot.top + dot.height / 2 - rect.top;
+    const cx = chip.left - rect.left;
+    const cy = chip.top - rect.top;
+    const pw = plaque.width;
+    const ph = plaque.height || 20;
+    const midTop = cy + (chip.height - ph) / 2;
+
+    const options = [
+      { left: cx + chip.width + 7, top: midTop, tx: "0%" },
+      { left: cx - 7 - pw, top: midTop, tx: "0%" },
+      { left: cx + (chip.width - pw) / 2, top: cy - ph - 7, tx: "-50%" }
+    ];
+    const fits = options.find(
+      (o) => !placed.some((q) => o.left < q.x + q.w + 2 && q.x < o.left + pw + 2 && o.top < q.y + q.h + 2 && q.y < o.top + ph + 2)
+    );
+    const pick = fits || options[0];
+    node.style.setProperty("--plaque-x", (pick.left - ax).toFixed(1) + "px");
+    node.style.setProperty("--plaque-y", (ay - pick.top - ph).toFixed(1) + "px");
+    node.style.setProperty("--plaque-tx", pick.tx);
+    placed.push({ x: pick.left, y: pick.top, w: pw, h: ph });
+  }
+
+  function schedulePinLayout() {
+    if (pinLayoutTimer) clearTimeout(pinLayoutTimer);
+    pinLayoutTimer = setTimeout(updatePinLayout, 70);
   }
 
   function renderGlobePoints() {
     if (!globe) return;
     const selectedId = state.selected[state.body];
-    const sites = activeSites();
-    const ranked = sortedSites(state.body);
+    const rankOf = new Map(sortedSites(state.body).map((row, i) => [row.site.id, i]));
 
-    const points = sites.map((site) => {
+    const pins = activeSites().map((site) => {
       const card = scoreFor(site);
       const isSelected = site.id === selectedId;
-      const rank = ranked.findIndex((row) => row.site.id === site.id);
+      const rank = rankOf.get(site.id) || 0;
+      let node = pinNodes.get(site.id);
+      if (!node) {
+        node = pinNode(site);
+        pinNodes.set(site.id, node);
+      }
+      node.style.setProperty("--pin", isSelected ? "#f5a623" : neonColor(card.letter));
+      node.classList.toggle("is-selected", isSelected);
+      node.querySelector(".gpin-chip").textContent = card.letter;
+      node.querySelector(".gpin-plaque").textContent = site.name;
       return {
         id: site.id,
-        name: site.name,
-        region: site.region,
-        grade: card.letter,
-        score: card.value,
         lat: site.lat,
         lng: site.lon,
-        color: isSelected ? "#fff4dd" : sphereColor(card.letter),
-        radius: isSelected ? 1.3 : 0.8,
-        // Elevation stair-steps fan out polar clusters that would otherwise
-        // collapse into one blob. globe.gl draws points as cylinders, so the
-        // stagger has to stay small or long lists render as vertical bars.
-        alt: isSelected ? 0.012 : 0.002 + Math.min(0.012, Math.max(0, rank) * 0.0006)
+        node,
+        order: isSelected ? -1 : rank
       };
     });
 
-    globe.pointsData(points);
-    updatePinScale();
+    globe.htmlElementsData(pins);
+    updatePinLayout();
     updateRings();
   }
 
   function updateRings() {
     if (!globe) return;
-    const selectedId = state.selected[state.body];
-    const rings = activeSites().map((site) => ({
-      lat: site.lat,
-      lng: site.lon,
-      selected: site.id === selectedId
-    }));
+    const selected = selectedSite();
+    const rings = selected ? [{ lat: selected.lat, lng: selected.lon, selected: true }] : [];
     if (state.point && state.point.body === state.body) {
       rings.push({
         lat: state.point.conditions.lat,
@@ -741,12 +837,18 @@
       .ringColor((d) => (t) =>
         d.query
           ? "rgba(93,220,201," + (1 - t) * 0.95 + ")"
-          : d.selected
-          ? "rgba(245,166,35," + (1 - t) * 0.9 + ")"
-          : "rgba(236,230,216," + (1 - t) * 0.22 + ")"
+          : "rgba(245,166,35," + (1 - t) * 0.75 + ")"
       )
       .ringPropagationSpeed(1.9)
-      .ringRepeatPeriod((d) => (d.selected ? 950 : 2400));
+      .ringRepeatPeriod(950);
+  }
+
+  /* Fly the camera, then re-solve the pin fan once the tween has landed: the
+     throttled layout only fires while 'change' events keep arriving. */
+  function flyTo(target, ms) {
+    if (!globe) return;
+    globe.pointOfView(Object.assign({}, target, { altitude: stageAltitude() }), ms);
+    setTimeout(updatePinLayout, ms + 90);
   }
 
   function stageAltitude() {
@@ -768,7 +870,7 @@
     renderGlobePoints();
     if (fly && site && globe) {
       cameraTarget = { lat: site.lat * 0.8, lng: site.lon };
-      globe.pointOfView(Object.assign({}, cameraTarget, { altitude: stageAltitude() }), 900);
+      flyTo(cameraTarget, 900);
     }
   }
 

@@ -796,4 +796,148 @@ dialog::backdrop {
 }
 .layer-toggle-row[aria-pressed="true"] .layer-switch { background: rgba(93, 220, 201, 0.55); }
 .layer-toggle-row[aria-pressed="true"] .layer-switch::after { transform: translateX(12px); }
+/* ---------------------------------------- sphere pins (Moon / Mars)
+   These are DOM markers projected onto the globe instead of 3D cylinders: they
+   keep the surface-locked motion and the behind-the-limb occlusion of the WebGL
+   layer, but read as survey marks (ground dot, hairline stem, neon grade chip)
+   rather than solid coloured bars. */
+.gpin {
+  --pin: #f5a623;
+  --stem: 18px;
+  --gpin-scale: 1;
+  position: relative;
+  width: 0;
+  height: 0;
+  z-index: 1;
+  transition: opacity 0.26s var(--ease-spring);
+}
+.gpin.is-behind {
+  opacity: 0;
+  pointer-events: none;
+}
+.gpin:hover,
+.gpin.is-selected { z-index: 6; }
+
+.gpin-hit {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  border-radius: 50%;
+  cursor: pointer;
+  pointer-events: auto;
+}
+.gpin-hit:focus-visible { outline: 2px solid var(--ice); outline-offset: 1px; }
+
+/* The ground point itself: small, bright, always drawn. */
+.gpin-dot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: var(--pin);
+  box-shadow:
+    0 0 0 1.5px rgba(4, 8, 16, 0.7),
+    0 0 9px 0 var(--pin),
+    0 0 18px -2px var(--pin);
+  pointer-events: none;
+  transition: opacity 0.2s var(--ease-spring), transform 0.2s var(--ease-spring);
+}
+.gpin.is-selected .gpin-dot { transform: scale(1.25); }
+.gpin.is-selected .gpin-dot::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+  border-radius: 50%;
+  border: 1.5px solid var(--pin);
+  animation: gpinPulse 2s var(--ease-spring) infinite;
+}
+@keyframes gpinPulse {
+  0% { transform: scale(0.6); opacity: 0.85; }
+  100% { transform: scale(1.7); opacity: 0; }
+}
+
+.gpin-stem {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1.25px;
+  height: var(--stem-h, 18px);
+  transform-origin: 50% 100%;
+  transform: rotate(var(--stem-rot, 0deg));
+  background: linear-gradient(to top, var(--pin) 10%, var(--pin) 55%, transparent);
+  box-shadow: 0 0 0 1px rgba(4, 8, 16, 0.5);
+  opacity: var(--stem-fade, 0.55);
+  pointer-events: none;
+  transition: opacity 0.18s var(--ease-spring);
+}
+
+.gpin-chip {
+  position: absolute;
+  left: var(--dx, 0px);
+  bottom: var(--chip-y, 18px);
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 7px;
+  border: 1.4px solid var(--pin);
+  background: rgba(6, 11, 22, 0.68);
+  color: var(--pin);
+  font: 700 10.5px/1 "Inter", "Segoe UI", sans-serif;
+  letter-spacing: 0.03em;
+  transform: translateX(-50%) scale(var(--gpin-scale));
+  transform-origin: 50% 100%;
+  box-shadow: 0 0 12px -3px var(--pin), 0 1px 6px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  transition: opacity 0.18s var(--ease-spring), transform 0.2s var(--ease-spring),
+    border-width 0.15s linear, color 0.15s linear;
+}
+.gpin.is-selected .gpin-chip {
+  border-width: 2px;
+  color: #ffe9c2;
+  background: rgba(28, 18, 4, 0.82);
+  box-shadow: 0 0 18px -2px var(--pin), 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* Name plate: quiet by default so 25 pins do not become a wall of text. */
+.gpin-plaque {
+  position: absolute;
+  left: var(--plaque-x, var(--dx, 0px));
+  bottom: var(--plaque-y, calc(var(--chip-y, 18px) + 25px));
+  transform: translateX(var(--plaque-tx, -50%)) scale(var(--gpin-scale));
+  transform-origin: 50% 100%;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border-radius: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background: rgba(6, 11, 22, 0.88);
+  color: var(--bone);
+  font: 500 11px/1.2 "Inter", "Segoe UI", sans-serif;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s var(--ease-spring);
+}
+.gpin:hover .gpin-plaque,
+.gpin.is-selected .gpin-plaque { opacity: 1; }
+
+/* Decluttered pins keep their ground dot but fold the chip away, so a dense
+   polar cluster reads as a cluster of points instead of stacked badges. */
+.gpin.is-crowded:not(.is-selected) .gpin-chip,
+.gpin.is-crowded:not(.is-selected) .gpin-stem,
+.gpin.is-crowded:not(.is-selected) .gpin-plaque { opacity: 0; }
+.gpin.is-crowded:hover .gpin-chip,
+.gpin.is-crowded:hover .gpin-stem { opacity: 1; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gpin.is-selected .gpin-dot::after { animation: none; opacity: 0.4; }
+}
+
 /* Keep the legend clear of the layer drawer. */

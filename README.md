@@ -9,7 +9,7 @@ query anywhere, plus a graded shortlist on each body:
 
 | View | What it does |
 | --- | --- |
-| **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier ? 25 lunar sites from the 13 Artemis III regions to far-side science targets |
+| **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier ? 25 lunar sites from the 13 Artemis III regions to far-side science targets, and 24 martian sites from Jezero to the shallow-ice belts |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs, searched across **both** shortlists (40 curated + 39 discovered) |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
@@ -31,6 +31,7 @@ Regenerate the derived data (all three scripts are keyless and idempotent):
 python tools\fetch_textures.py      # stitches NASA Trek/GIBS tiles into assets/textures/
 python tools\build_grids.py         # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
 python tools\build_moon_candidates.py # appends the expanded lunar candidate set (idempotent)
+python tools\build_mars_candidates.py # appends the expanded martian candidate set (idempotent)
 python tools\build_earth_layers.py  # Earth temperature field + night-lights probe
 python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
 python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
@@ -98,10 +99,23 @@ sites instead of washing out whole continents.
 
 ### Map pins
 
-**Moon and Mars keep the original 3D pin system:** glowing spheres sized by grade, with a faint ring
-pulse on every site, an amber pulse on the selection, and a teal pulse at a clicked point. They sit
-in slight elevation steps so polar clusters separate, scale with camera distance, and use a brighter
-grade palette than the flat map because they are read against grey lunar terrain.
+**Moon and Mars use projected survey pins.** Each site is drawn as three parts: a small glowing dot
+on the exact ground point, a hairline leader, and a neon grade chip in the same letter style as the
+rail. The pins are DOM elements anchored to the sphere, so they keep the physics that made the old
+3D points readable — they rotate with the body and fade out as their ground point passes behind the
+limb — without the solid cylinders that used to render as coloured bars at the limb.
+
+Three details keep 25 densely-packed polar sites legible:
+
+* **Fan placement.** The best-ranked pin takes the slot straight above its dot; each pin after it
+  takes the nearest free slot sideways or a row higher, and the leader line is redrawn to follow.
+  Pins that cannot fit fold their chip away but keep the dot, so every location stays marked.
+* **Scale with zoom.** Chips shrink as the camera pulls back and grow as you close in, and the fan is
+  re-solved after every camera move (throttled to 70 ms).
+* **Name plate.** The selected pin wears its site name beside its chip, placed on whichever side is
+  free; hovering any dot (including a folded one) reveals its chip.
+
+The amber ring pulse marks the selection and a teal pulse marks a clicked point.
 
 **Earth uses teardrop markers** with the letter grade drawn inside — a flat map has room for labels
 that a 3D globe does not. Each carries a deep, saturated fill (green A → darkest red F), a white
@@ -171,7 +185,7 @@ elevation models to a 720×360 (0.5°) grid and derives slope and local relief f
 | Moon elevation / slope / roughness | LOLA `LDEM_4` (4 ppd, int16) | measured |
 | Mars elevation / slope / roughness | MOLA MEGDR (16 ppd, int16) | measured |
 | Moon day / night temperature | isotonic latitude fit (monotone in \|lat\|) on 10 published Diviner site temperatures | **modelled** (±8.1 K / ±11.8 K) |
-| Mars day / night temperature | latitude + elevation regression on 12 published sites | **modelled** (±5 K / ±4 K) |
+| Mars day / night temperature | latitude + elevation regression on the 12 hand-curated sites | **modelled** (±5 K / ±4 K) |
 
 Clicking the globe samples those PNG grids client-side. Water ice, dust and comms geometry are not
 resolved at 0.5°, so a point match uses only temperature, day/night swing, slope and roughness, and
@@ -217,6 +231,41 @@ Where the numbers come from:
 Grades come out as expected: the Shackleton?de Gerlache ridge sites lead (A), the sunlit rims follow
 (B), near-side science targets grade C for having no water, and the far-side sites grade D because
 Earth visibility ? and therefore direct comms ? is zero.
+
+## Martian candidate set
+
+24 graded sites: the twelve original dossiers (mission-verified ground plus the classic
+landing-site studies) and twelve added from published orbital results.
+
+| Group | Sites |
+| --- | --- |
+| Mission ground truth | Jezero (Perseverance), Gale (Curiosity), Meridiani Planum (Opportunity), Chryse Planitia (Viking 1), Green Valley (Phoenix), Elysium Planitia (InSight) |
+| Shallow-ice belts | Arcadia Planitia, Utopia Planitia, Deuteronilus Mensae, Nilosyrtis Mensae, Athabasca Valles, Korolev Crater |
+| Polar ice | Planum Boreum, Korolev's 1.8 km fill, Green Valley's ice table |
+| Ancient water and clay | Mawrth Vallis, Oxia Planum (ExoMars target), Nili Fossae, Holden Crater, Eberswalde Delta, Crommelin Crater, Melas Chasma |
+| Volcanic and subsurface | Arsia Mons skylights (confirmed lava-tube openings), Elysium Planitia, Amazonis Planitia, Argyre Planitia |
+
+`tools/build_mars_candidates.py` appends the expanded set and is idempotent (it rewrites only its own
+marked block, and prints a model check against the twelve hand-written sites).
+
+Where the numbers come from:
+
+- **Elevation** ? a 5×5 median of the native MOLA MEGDR topography (16 px/deg), i.e. the ground a
+  landing ellipse would touch rather than a single pixel that might sit on a crater rim. The model
+  check prints its agreement with the hand-written elevations.
+- **Slope, relief and temperature** ? from the same 0.5° grids the app samples on a map click, so a
+  dossier always agrees with a query at those coordinates. Temperature is the latitude+elevation
+  regression, labelled *modelled* in the layer legend.
+- **Pressure** ? hydrostatic, from elevation (610 Pa datum, 11.1 km scale height). Arsia Mons reads
+  about 140 Pa, Hellas about 1,150 Pa, which is the physical range the dossiers show.
+- **Solar** ? latitude-scaled with a polar-summer floor, fitted to the curated sites.
+- **Ice, dust, subsurface, biosignature and science scores** ? literature-derived (MRO/HiRISE and
+  MCS, Mars Express MARSIS/OMEGA, Phoenix and Viking surface data, ExoMars site selection), each with
+  a confidence tag and a citation.
+
+The result: polar and mid-latitude ice sites grade B on water plus ops, dry science sites grade B or C
+because their ice distance costs them the resource row, and nothing reaches A ? by the same rubric
+that gives the Moon its A sites, Mars is the harder planet to base on.
 
 ## Global analog prospector (discovered candidates)
 

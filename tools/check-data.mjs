@@ -49,8 +49,8 @@ for (const body of ["moon", "mars", "earth", "discovered"]) {
   if (sites.moon.length < 20) {
     problems.push(`moon: only ${sites.moon.length} sites, expected at least 20`);
   }
-  if (sites.mars.length < 12) {
-    problems.push(`mars: only ${sites.mars.length} sites, expected at least 12`);
+  if (sites.mars.length < 20) {
+    problems.push(`mars: only ${sites.mars.length} sites, expected at least 20`);
   }
 }
 
@@ -82,31 +82,33 @@ for (let i = 0; i < sites.discovered.length; i += 1) {
   }
 }
 
-// Lunar coordinates must be unique and on the sphere, and every polar site has to
-// be near a pole rather than just labelled as one.
-const moonIds = new Set();
-for (const site of sites.moon) {
-  if (moonIds.has(site.id)) problems.push(`${site.id}: duplicate lunar id`);
-  moonIds.add(site.id);
-  if (!(Math.abs(site.lat) <= 90 && Math.abs(site.lon) <= 360)) {
-    problems.push(`${site.id}: coordinates out of range`);
+// Body coordinates must be unique and on the sphere. The lunar set is graded on
+// water access, so an A or B there has to come with a real ice story; Mars keeps
+// dry science sites in the B band by design, so that rule is moon-only.
+for (const [body, minKm] of [["moon", 15], ["mars", 150]]) {
+  const ids = new Set();
+  for (const site of sites[body]) {
+    if (ids.has(site.id)) problems.push(`${site.id}: duplicate ${body} id`);
+    ids.add(site.id);
+    if (!(Math.abs(site.lat) <= 90 && Math.abs(site.lon) <= 360)) {
+      problems.push(`${site.id}: coordinates out of range`);
+    }
+    const card = scoreSite(site, DEFAULT_WEIGHTS);
+    if (body === "moon" && (card.letter === "A" || card.letter === "B") && (site.iceIndex || 0) < 40) {
+      problems.push(`${site.id}: grade ${card.letter} but iceIndex ${site.iceIndex}`);
+    }
   }
-  // A base site cannot earn an A or B without a real water/ice story.
-  const card = scoreSite(site, DEFAULT_WEIGHTS);
-  if ((card.letter === "A" || card.letter === "B") && (site.iceIndex || 0) < 40) {
-    problems.push(`${site.id}: grade ${card.letter} but iceIndex ${site.iceIndex}`);
+  const crowded = [];
+  for (let i = 0; i < sites[body].length; i += 1) {
+    for (let j = i + 1; j < sites[body].length; j += 1) {
+      const a = sites[body][i];
+      const b = sites[body][j];
+      const d = sandbox.window.RADIUM.distanceKm(a.lat, a.lon, b.lat, b.lon);
+      if (d < minKm) crowded.push(`${a.id}/${b.id} only ${d.toFixed(0)} km apart`);
+    }
   }
+  if (crowded.length) problems.push(...crowded);
 }
-const moonSpacing = [];
-for (let i = 0; i < sites.moon.length; i += 1) {
-  for (let j = i + 1; j < sites.moon.length; j += 1) {
-    const a = sites.moon[i];
-    const b = sites.moon[j];
-    const d = sandbox.window.RADIUM.distanceKm(a.lat, a.lon, b.lat, b.lon);
-    if (d < 15) moonSpacing.push(`${a.id}/${b.id} only ${d.toFixed(0)} km apart`);
-  }
-}
-if (moonSpacing.length) problems.push(...moonSpacing);
 
 // Spot-check the similarity metric against expert-known analogs.
 const ridge = sites.moon.find((s) => s.id === "connecting-ridge");
