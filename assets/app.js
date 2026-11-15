@@ -150,8 +150,7 @@
     body: "moon",
     layer: { moon: "moon_surface", mars: "mars_base", earth: "earth_suit" },
     base: { earth: "earth_s2" },
-    opacity: { earth: 0.78 },
-    panelOpen: true,
+    opacity: { earth: 0.86 },
     selected: { moon: null, mars: null, earth: null },
     weights: Object.assign({}, R.DEFAULT_WEIGHTS),
     twinSource: null,
@@ -924,7 +923,7 @@
         data[idx] = rgb[0];
         data[idx + 1] = rgb[1];
         data[idx + 2] = rgb[2];
-        data[idx + 3] = Math.round(fade * (20 + 112 * Math.pow(t, 0.9)));
+        data[idx + 3] = Math.round(fade * (52 + 168 * Math.pow(t, 0.95)));
       }
     }
     ctx.putImageData(image, 0, 0);
@@ -981,7 +980,7 @@
       data[i] = rgb[0];
       data[i + 1] = rgb[1];
       data[i + 2] = rgb[2];
-      data[i + 3] = Math.round(18 + 128 * Math.pow(t, 0.85));
+      data[i + 3] = Math.round(38 + 185 * Math.pow(t, 0.9));
     }
     ctx.putImageData(pixels, 0, 0);
     entry.scores = scores;
@@ -1190,20 +1189,11 @@
   }
 
   /* -------------------------------------------------------------- layers */
-  const groupState = { base: true, data: true, terrain: true, analysis: true, screening: false, overlays: false };
+  let openMenu = null;
 
-  const CHEVRON =
-    '<svg class="layer-group__chev" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
-    '<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-
-  function groupHead(key, label) {
-    return (
-      '<button type="button" class="layer-group__head" data-layer-group="' + key +
-        '" aria-expanded="' + String(groupState[key]) + '">' +
-        CHEVRON + "<span>" + label + "</span>" +
-      "</button>"
-    );
-  }
+  const PILL_CHEVRON =
+    '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   function optionRow(kind, item, checked) {
     const attr = kind === "base" ? "data-layer-base" : "data-layer-data";
@@ -1212,92 +1202,79 @@
         'class="layer-option">' +
         '<span class="layer-option__dot" aria-hidden="true"></span>' +
         '<span class="min-w-0 flex-1">' +
-          '<span class="layer-option__label">' + item.label +
-            (item.glyph ? '<span class="layer-option__glyph" aria-hidden="true">' + item.glyph + "</span>" : "") +
-          "</span>" +
+          '<span class="layer-option__label">' + item.label + "</span>" +
           '<span class="layer-option__note">' + item.note + "</span>" +
         "</span>" +
       "</button>"
     );
   }
 
-  function layerPanelHtml() {
-    const base = LAYERS.earth.base
-      .map((item) => optionRow("base", item, state.base.earth === item.id))
-      .join("");
+  function pill(kind, kicker, value) {
+    const active = openMenu === kind;
+    return (
+      '<button type="button" class="layer-pill" data-layer-menu="' + kind + '" ' +
+        'aria-expanded="' + String(active) + '" aria-haspopup="true">' +
+        '<span class="layer-pill__kicker">' + kicker + "</span>" +
+        '<span class="layer-pill__value">' + value + "</span>" +
+        PILL_CHEVRON +
+      "</button>"
+    );
+  }
 
-    const dataGroups = LAYERS.earth.data
+  function menuHtml() {
+    if (openMenu === "base") {
+      const rows = LAYERS.earth.base
+        .map((item) => optionRow("base", item, state.base.earth === item.id))
+        .join("");
+      return (
+        '<p class="layer-popover__title">Satellite view</p>' +
+        '<p class="layer-popover__intro">What sits underneath the data layer.</p>' +
+        '<div role="radiogroup" aria-label="Satellite view">' + rows + "</div>"
+      );
+    }
+
+    const pct = Math.round(state.opacity.earth * 100);
+    const groups = LAYERS.earth.data
       .map((group) => {
-        const key = group.group.toLowerCase();
-        const items = group.items
+        const rows = group.items
           .map((item) => optionRow("data", item, state.layer.earth === item.id))
           .join("");
         return (
-          '<div class="layer-group" data-open="' + String(groupState[key]) + '">' +
-            groupHead(key, group.group) +
-            '<div class="layer-group__body" role="radiogroup" aria-label="' + group.group + '">' + items + "</div>" +
-          "</div>"
+          '<p class="layer-popover__group">' + group.group + "</p>" +
+          '<div role="radiogroup" aria-label="' + group.group + '">' + rows + "</div>"
         );
       })
       .join("");
 
-    document.body.classList.toggle("layers-open", true);
-    const pct = Math.round(state.opacity.earth * 100);
     return (
       '<div class="flex items-start justify-between gap-2">' +
-        "<div>" +
-          '<h2 class="layer-panel__title">Map layers</h2>' +
-          '<p class="layer-panel__intro">Satellite view underneath, one data layer on top — drawn from the grids RADIUM analyses.</p>' +
-        "</div>" +
-        '<button type="button" class="layer-off" data-layer-close aria-label="Close the layer panel">?</button>' +
+        '<div><p class="layer-popover__title">Data layer</p>' +
+        '<p class="layer-popover__intro">One at a time, over the satellite view.</p></div>' +
+        (state.layer.earth
+          ? '<button type="button" class="layer-off" data-layer-off>Turn off</button>'
+          : "") +
       "</div>" +
-      '<div class="layer-group" data-open="' + String(groupState.base) + '">' +
-        groupHead("base", "Satellite view") +
-        '<div class="layer-group__body" role="radiogroup" aria-label="Satellite view">' + base + "</div>" +
+      '<div class="layer-opacity">' +
+        '<span class="layer-opacity__label">Opacity</span>' +
+        '<input type="range" min="20" max="100" step="1" value="' + pct + '" data-layer-opacity ' +
+          'style="--fill:' + pct + '%" aria-label="Data layer opacity">' +
+        '<span class="layer-opacity__value">' + pct + "%</span>" +
       "</div>" +
-      '<div class="layer-group" data-open="' + String(groupState.data) + '">' +
-        '<div class="flex items-center justify-between gap-2">' +
-          groupHead("data", "Data layer") +
-          (state.layer.earth
-            ? '<button type="button" class="layer-off" data-layer-off>Turn off</button>'
-            : "") +
-        "</div>" +
-        '<div class="layer-group__body">' +
-          '<div class="layer-opacity">' +
-            '<span class="layer-opacity__label">Opacity</span>' +
-            '<input type="range" min="20" max="100" step="1" value="' + pct + '" data-layer-opacity ' +
-              'style="--fill:' + pct + '%" aria-label="Data layer opacity">' +
-            '<span class="layer-opacity__value">' + pct + "%</span>" +
-          "</div>" +
-          dataGroups +
-        "</div>" +
-      "</div>" +
-      '<div class="layer-group" data-open="' + String(groupState.overlays) + '">' +
-        groupHead("overlays", "Overlays") +
-        '<div class="layer-group__body">' +
-          '<button type="button" class="layer-toggle-row" data-labels-toggle aria-pressed="' + String(state.labels) + '">' +
-            "<span>Boundaries &amp; place labels</span>" +
-            '<span class="layer-switch" aria-hidden="true"></span>' +
-          "</button>" +
-        "</div>" +
-      "</div>"
+      groups
     );
   }
 
   function renderLayers() {
     const chipHost = $("#layer-controls");
-    const panel = $("#layer-panel");
-    const toggle = $("#layer-panel-toggle");
+    const popover = $("#layer-popover");
     const isEarth = state.body === "earth";
 
-    toggle.classList.toggle("hidden", !isEarth);
-    toggle.setAttribute("aria-expanded", String(isEarth && state.panelOpen));
-    panel.hidden = !(isEarth && state.panelOpen);
-    document.body.classList.toggle("layers-open", !panel.hidden);
-    if (panel.hidden) panel.innerHTML = "";
-
     chipHost.innerHTML = "";
+    popover.hidden = true;
+    popover.innerHTML = "";
+
     if (!isEarth) {
+      openMenu = null;
       LAYERS[state.body].forEach((layer) => {
         const btn = el("button", "layer-btn", layer.label);
         btn.type = "button";
@@ -1309,10 +1286,33 @@
         });
         chipHost.appendChild(btn);
       });
-    } else if (!panel.hidden) {
-      panel.innerHTML = layerPanelHtml();
+      renderLegend();
+      return;
     }
 
+    const baseItem = LAYERS.earth.base.find((b) => b.id === state.base.earth) || LAYERS.earth.base[0];
+    const dataItem = currentDataLayer();
+    chipHost.insertAdjacentHTML(
+      "beforeend",
+      pill("base", "Satellite", baseItem.label) +
+        pill("data", "Layer", dataItem ? dataItem.label : "None")
+    );
+
+    const labelsBtn = el("button", "layer-btn", "Boundaries");
+    labelsBtn.type = "button";
+    labelsBtn.setAttribute("aria-pressed", String(state.labels));
+    labelsBtn.title = "Show country boundaries and place labels";
+    labelsBtn.addEventListener("click", () => {
+      state.labels = !state.labels;
+      renderLayers();
+      applyLabels();
+    });
+    chipHost.appendChild(labelsBtn);
+
+    if (openMenu) {
+      popover.innerHTML = menuHtml();
+      popover.hidden = false;
+    }
     renderLegend();
   }
 
@@ -2041,17 +2041,23 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
-    const layerGroup = event.target.closest("[data-layer-group]");
-    if (layerGroup) {
-      const key = layerGroup.dataset.layerGroup;
-      groupState[key] = !groupState[key];
+    const menuBtn = event.target.closest("[data-layer-menu]");
+    if (menuBtn) {
+      const kind = menuBtn.dataset.layerMenu;
+      openMenu = openMenu === kind ? null : kind;
       renderLayers();
       return;
+    }
+
+    if (openMenu && !event.target.closest("#layer-popover")) {
+      openMenu = null;
+      renderLayers();
     }
 
     const basePick = event.target.closest("[data-layer-base]");
     if (basePick) {
       state.base.earth = basePick.dataset.layerBase;
+      openMenu = null;
       renderLayers();
       applyEarthLayer();
       return;
@@ -2061,6 +2067,7 @@
     if (dataPick) {
       const id = dataPick.dataset.layerData;
       state.layer.earth = state.layer.earth === id ? null : id;
+      openMenu = null;
       renderLayers();
       applyEarthLayer();
       return;
@@ -2068,21 +2075,15 @@
 
     if (event.target.closest("[data-layer-off]")) {
       state.layer.earth = null;
+      openMenu = null;
       renderLayers();
       applyEarthLayer();
       return;
     }
 
-    if (event.target.closest("[data-layer-close]") || event.target.closest("#layer-panel-toggle")) {
-      state.panelOpen = !state.panelOpen;
+    if (event.target.closest("[data-layer-close]")) {
+      openMenu = null;
       renderLayers();
-      return;
-    }
-
-    if (event.target.closest("[data-labels-toggle]")) {
-      state.labels = !state.labels;
-      renderLayers();
-      applyLabels();
       return;
     }
 
@@ -2233,6 +2234,11 @@
   }
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && openMenu) {
+      openMenu = null;
+      renderLayers();
+      return;
+    }
     if ($("#viewer-dialog").open) {
       if (event.key === "ArrowRight") {
         event.preventDefault();

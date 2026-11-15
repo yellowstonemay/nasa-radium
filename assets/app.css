@@ -567,54 +567,70 @@ dialog::backdrop {
 }
 
 /* ---------------------------------------------------------------- map layers
-   Slide-over panel: one base imagery choice, one data layer at a time, with an
-   opacity slider so a field can be dialled back over the satellite view. */
-.layer-panel {
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: rgba(8, 13, 24, 0.92);
-  box-shadow: var(--shadow-float);
-  backdrop-filter: blur(14px);
-  padding: 0.85rem 0.85rem 0.7rem;
-}
-#layer-panel-toggle:not(.hidden) { display: inline-flex; }
-
-.layer-panel__title {
-  font-size: 0.95rem;
-  letter-spacing: -0.01em;
-  color: var(--bone);
-}
-.layer-panel__intro {
-  margin-top: 0.3rem;
-  font-size: 10.5px;
-  line-height: 1.55;
-  color: var(--muted);
-}
-
-.layer-group { margin-top: 0.35rem; }
-.layer-group__head {
-  display: flex;
-  flex: 1;
+   Two compact pills sit inside the map, each opening a small popover, so the
+   layer control costs a couple of chips instead of a full-height panel. */
+.layer-pill {
+  display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  width: 100%;
-  padding: 0.26rem 0 0.24rem;
-  border-radius: 6px;
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(8, 13, 24, 0.82);
+  padding: 0.3rem 0.6rem 0.3rem 0.7rem;
   color: var(--bone);
-  transition: color 0.18s var(--ease-spring);
+  backdrop-filter: blur(10px);
+  transition: border-color 0.18s var(--ease-spring), background 0.18s var(--ease-spring),
+    transform 0.18s var(--ease-spring);
 }
-.layer-group__head:hover { color: var(--ice); }
-.layer-group__head:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
-.layer-group__chev {
-  flex: none;
-  transition: transform 0.22s var(--ease-spring);
+.layer-pill:hover { border-color: rgba(255, 255, 255, 0.24); background: rgba(12, 20, 34, 0.9); }
+.layer-pill:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
+.layer-pill:active { transform: scale(0.98); }
+.layer-pill[aria-expanded="true"] {
+  border-color: rgba(93, 220, 201, 0.5);
+  background: rgba(93, 220, 201, 0.12);
+}
+.layer-pill__kicker {
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
   color: var(--muted);
 }
-.layer-group[data-open="false"] .layer-group__chev { transform: rotate(-90deg); }
-.layer-group[data-open="false"] .layer-group__body { display: none; }
+.layer-pill__value {
+  font-size: 11.5px;
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.layer-popover {
+  width: 264px;
+  max-height: min(72vh, 520px);
+  overflow-y: auto;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: rgba(8, 13, 24, 0.95);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: blur(16px);
+  padding: 0.6rem 0.55rem 0.5rem;
+}
+.layer-popover__title {
+  font-size: 0.82rem;
+  color: var(--bone);
+}
+.layer-popover__intro {
+  margin-top: 0.15rem;
+  font-size: 10px;
+  line-height: 1.45;
+  color: var(--muted);
+}
+.layer-popover__group {
+  margin: 0.45rem 0 0.15rem 0.4rem;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 
 .layer-option {
   display: flex;
@@ -623,7 +639,7 @@ dialog::backdrop {
   width: 100%;
   border-radius: 9px;
   border: 1px solid transparent;
-  padding: 0.26rem 0.4rem;
+  padding: 0.34rem 0.4rem;
   text-align: left;
   transition: background 0.18s var(--ease-spring), border-color 0.18s var(--ease-spring),
     transform 0.18s var(--ease-spring);
@@ -666,8 +682,8 @@ dialog::backdrop {
 .layer-option__note {
   display: block;
   margin-top: 1px;
-  font-size: 9px;
-  line-height: 1.4;
+  font-size: 9.5px;
+  line-height: 1.45;
   color: var(--muted);
 }
 .layer-option__glyph {
@@ -771,4 +787,3 @@ dialog::backdrop {
 .layer-toggle-row[aria-pressed="true"] .layer-switch { background: rgba(93, 220, 201, 0.55); }
 .layer-toggle-row[aria-pressed="true"] .layer-switch::after { transform: translateX(12px); }
 /* Keep the legend clear of the layer drawer. */
-body.layers-open #legend { left: 18.2rem; }

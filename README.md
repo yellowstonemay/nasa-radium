@@ -71,9 +71,11 @@ which is which.
 
 ### Map layer panel
 
-The Earth map uses a **layer drawer** (the `Layers` button, top left of the map) instead of a chip
-row: one **satellite view** underneath and one **data layer** on top, with an opacity slider and a
-`Turn off` action. Groups collapse, so the panel fits a laptop screen.
+The Earth map keeps its controls **inside the map**: two compact pills in the top-right corner
+(`Satellite ?`, `Layer ?`) plus a `Boundaries` toggle. Each pill opens a small popover ? nothing is
+permanently covering the map, and the popover disappears the moment you pick something (click away
+or press Esc to dismiss). One **satellite view** sits underneath, one **data layer** on top, with an
+opacity slider and a `Turn off` action inside the data popover.
 
 | Group | Options |
 | --- | --- |
@@ -82,9 +84,10 @@ row: one **satellite view** underneath and one **data layer** on top, with an op
 | Analysis | Analog grade field (default) · Heat map · Twin similarity |
 | Screening | Prospect scan |
 | Overlays | Boundaries and place labels |
-All four data layers draw through **one ramp family** (deep violet at the low end, teal and lime
+All five data layers draw through **one ramp family** (deep violet at the low end, teal and lime
 through the middle, amber at the top) so they read as the same instrument, and each carries a legend
-with its real value range. Rasters ship as 8-bit masks and are colourised in the browser, so the
+with its real value range. Opacity is 86% by default and the alpha curve is biased toward the high
+end, so the field is unmistakable under a data layer while the imagery still shows through. Rasters ship as 8-bit masks and are colourised in the browser, so the
 ramp, the opacity slider and the legend always agree. The two interpolated fields (grade, twin) are
 computed at 1440x720 with a 1,300 km fade radius, which keeps them as local halos around measured
 sites instead of washing out whole continents.
