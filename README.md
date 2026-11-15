@@ -37,7 +37,8 @@ python tools\build_earth_layers.py  # Earth temperature field + night-lights pro
 python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
 python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
 python tools\build_site_thumbs.py   # Moon/Mars surface crops for each pin
-python tools\merge_moon_texture.py  # blends WAC detail with the polar-filled texture
+python tools\merge_moon_texture.py  # rebuilds the base, then run:
+python tools\build_moon_temp_textures.py   # day/night layers sit on that base
 python tools\build_moon_temp_textures.py # renders the day/night temperature globe textures
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
@@ -63,7 +64,7 @@ which is which.
 
 | Layer | Product | Source |
 | --- | --- | --- |
-| Moon base | LRO WAC global mosaic (303 ppd) blended with NASA SVS LROC colour-poles texture above 66 deg | [Moon Trek](https://trek.nasa.gov/moon/) · [SVS](https://svs.gsfc.nasa.gov/4720) |
+| Moon base | LRO WAC global mosaic (303 ppd), polar caps destriped and finished with NASA SVS LROC colour-poles detail injection | [Moon Trek](https://trek.nasa.gov/moon/) · [SVS](https://svs.gsfc.nasa.gov/4720) |
 | Moon day / night temp | **modelled** isotonic latitude fit to Diviner site climatology, rendered over the LRO WAC mosaic | [PDS Diviner](https://pds-geosciences.wustl.edu/missions/lro/diviner.htm) · [Moon Trek](https://trek.nasa.gov/moon/) |
 | Mars base | MGS MOLA colour shaded relief, 463 m | [Mars Trek](https://trek.nasa.gov/mars/) · [PDS MRO](https://pds-geosciences.wustl.edu/missions/mro/) |
 | Mars colour | Viking MDIM 2.1 mosaic, 232 m | [Mars Trek](https://trek.nasa.gov/mars/) · [USGS Astrogeology](https://astrogeology.usgs.gov/) |
@@ -159,6 +160,28 @@ click, and a globe click within 2.6° of a site is treated as a selection rather
 stages also carry a **zoom stepper** at the bottom right: Leaflet's own control on Earth, and a
 matching `+ / −` group that walks the globe camera in fixed altitude ratios (0.45–5.6 globe radii)
 and disables itself at either limit.
+
+### Moon surface
+
+Everything the app shows of the Moon looks at the south pole, so the polar caps have to hold up at
+full zoom — and the raw LRO WAC mosaic does not. Each polar orbit track maps to a meridian, so the
+mosaic carries a per-longitude gain that fans into a pinwheel wherever the tracks converge; NASA's
+SVS polar texture has complete coverage but is blurred above about 80° and exposed roughly twice as
+bright, and dropping it in from 66° (which is what the pipeline used to do) turned the pole into a
+smooth white disc.
+
+`tools/merge_moon_texture.py` builds it the other way round: divide the per-meridian gain out of the
+WAC caps, then composite the SVS texture over them with the WAC's own high-pass detail injected, so
+craters survive and the orbit spokes do not. The SVS is brought onto the WAC exposure with one gain
+measured on rows where the WAC is complete — a per-row fit chases a profile the WAC cannot support
+where it has holes, and darkens the whole north cap. No-data wedges are filled outright rather than
+ramped, because a hard-edged fill reads as a rectangle on the sphere. A soft knee at 82% keeps the
+bright ray systems from clipping. Result: cap and equator agree within 10% (79 and 76 of 255).
+
+**The look is per body.** `applyGlobeLook()` gives the Moon no atmosphere — globe.gl's blue rim is
+right for Mars and wrong for an airless body — matte regolith (specular 08, shininess 4) and a
+soft key (ambient 3.0, key 0.75), which lands the disc at mean 71 against NASA's own render's 72,
+p99 143 against 146. Mars keeps the stock tuning, which reads well against its relief map.
 
 ### Star field
 

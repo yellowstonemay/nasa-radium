@@ -934,9 +934,62 @@
     new ResizeObserver(resize).observe(host);
   }
 
+  /* Per-body lighting and surface finish. The Moon has no atmosphere, so the
+     blue rim globe.gl draws by default is wrong there, and its regolith is
+     matte: a bright key or a shininess of 30 leaves it looking like a polished
+     ball. Mars keeps the stock look, which reads well against its relief map. */
+  const GLOBE_LOOK = {
+    moon: {
+      atmosphere: false,
+      ambient: 3.0,
+      ambientColor: 0xdfe6f2,
+      key: 0.75,
+      shininess: 4,
+      specular: 0x080808
+    },
+    mars: {
+      atmosphere: true,
+      atmosphereColor: "#9fc4ff",
+      atmosphereAltitude: 0.17,
+      ambient: Math.PI,
+      ambientColor: 0xcccccc,
+      key: 0.6 * Math.PI,
+      shininess: 30,
+      specular: 0x111111
+    }
+  };
+
+  function applyGlobeLook() {
+    if (!globe) return;
+    const look = GLOBE_LOOK[state.body] || GLOBE_LOOK.mars;
+    globe.showAtmosphere(look.atmosphere);
+    if (look.atmosphere) {
+      globe.atmosphereColor(look.atmosphereColor).atmosphereAltitude(look.atmosphereAltitude);
+    }
+    const material = globe.globeMaterial();
+    if (material) {
+      if (typeof material.shininess === "number") material.shininess = look.shininess;
+      if (material.specular && material.specular.setHex) material.specular.setHex(look.specular);
+      material.needsUpdate = true;
+    }
+    // globe.gl only re-lights when the array identity changes, so hand it fresh
+    // clones rather than mutating the lights it already holds.
+    const lights = (globe.lights() || []).map((light) => light.clone());
+    lights.forEach((light) => {
+      if (light.type === "AmbientLight") {
+        light.intensity = look.ambient;
+        light.color.setHex(look.ambientColor);
+      } else if (light.type === "DirectionalLight") {
+        light.intensity = look.key;
+      }
+    });
+    if (lights.length) globe.lights(lights);
+  }
+
   function applyGlobeTexture() {
     if (!globe) return;
     globe.globeImageUrl("assets/textures/" + state.layer[state.body] + ".jpg");
+    applyGlobeLook();
   }
 
   /* Moon and Mars are marked with projected survey pins (ground dot, hairline
