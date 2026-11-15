@@ -10,10 +10,10 @@ query anywhere, plus a graded shortlist on each body:
 | View | What it does |
 | --- | --- |
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier |
-| **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs |
+| **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs, searched across **both** shortlists (40 curated + 39 discovered) |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
-| **Earth Twin mode** | any curated site *or* clicked point → the map jumps to Earth and ranks its closest matches |
+| **Earth Twin mode** | any site or clicked point → the map jumps to Earth and ranks its closest matches from both shortlists; discovered hits are tagged `screened` and keep their dashed pin |
 
 ## Run it
 
@@ -240,6 +240,11 @@ warm desert the screen loves can grade modestly for having no water ice and a 50
 
 Earth Twin similarity is a weighted normalised distance over temperature, day/night swing, solar,
 slope, roughness, water/ice and dust, reported 0–100.
+
+Every match query — a clicked Moon/Mars point, the twin banner, the dossier's "closest Earth
+analogs" — runs over `SITES.earth.concat(SITES.discovered)`, so a discovered candidate can outrank a
+curated one or sit alongside it. Discovered hits are labelled `screened` in the list and keep their
+dashed pin on the map; picking one switches the shortlist tab to match, so the selection is visible.
 
 Sanity check that the metric reproduces expert judgment: the best twin for *Connecting Ridge* comes
 out as Haughton Crater / University Valley, both long-standing NASA analog sites.

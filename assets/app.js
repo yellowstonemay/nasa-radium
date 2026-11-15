@@ -188,8 +188,24 @@
     return rows.sort((a, b) => b.card.value - a.card.value);
   }
 
+  /* Curated plus discovered: a match question is about the planet, not about
+     which shortlist tab happens to be open. */
+  function twinnableSites() {
+    return SITES.earth.concat(SITES.discovered);
+  }
+
+  /* Keep the shortlist tab in step with the site that was picked, so a discovered
+     match does not open while the curated tab is showing. */
+  function syncSetTo(siteId) {
+    if (!siteId) return;
+    state.set = SITES.discovered.some((s) => s.id === siteId) ? "discovered" : "curated";
+  }
+
   function activeSites() {
-    if (state.body === "earth" && state.set === "discovered") return SITES.discovered;
+    if (state.body === "earth") {
+      if (state.twinSource) return twinnableSites();
+      if (state.set === "discovered") return SITES.discovered;
+    }
     return SITES[state.body];
   }
 
@@ -253,13 +269,24 @@
     const list = $("#rail-list");
     list.innerHTML = "";
 
+    const split = $("#rail-split");
+    if (split) {
+      // A point query or twin mode lists both shortlists, so the switch is moot.
+      const showSplit = state.body === "earth" && !state.point && !state.twinSource;
+      split.classList.toggle("hidden", !showSplit);
+      split.querySelectorAll("[data-set]").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.set === state.set));
+      });
+    }
+
     if (state.point) {
       const point = state.point;
       $("#rail-title").textContent = "Earth matches";
       $("#rail-count").textContent = point.matches.length;
       $("#rail-note").textContent =
-        "Closest terrestrial analogs for " + point.site.name +
-        ". Compared on temperature, day/night swing, slope and roughness; water and dust are not resolved at 0.5°.";
+        "Closest terrestrial analogs for " + point.site.name + " across both shortlists (" +
+        SITES.earth.length + " curated + " + SITES.discovered.length + " discovered). Compared on temperature, " +
+        "day/night swing, slope and roughness; water and dust are not resolved at 0.5°.";
       point.matches.forEach((match, index) => {
         const btn = el("button", "site-row");
         btn.type = "button";
@@ -268,7 +295,9 @@
             fmt(match.match.score, 0) + "</span>" +
           '<span class="min-w-0 flex-1">' +
             '<span class="block truncate text-[13px] text-bone">' + match.site.name + "</span>" +
-            '<span class="mt-0.5 block truncate text-[11px] text-muted">' + match.site.region + "</span>" +
+            '<span class="mt-0.5 block truncate text-[11px] text-muted">' + match.site.region +
+              (match.site.prospect ? ' · <span class="text-ice/80">screened</span>' : "") +
+            "</span>" +
           "</span>" +
           '<span class="text-right">' +
             '<span class="block text-[10px] uppercase tracking-widest text-muted">match</span>' +
@@ -281,19 +310,16 @@
     }
 
     const rows = sortedSites(state.body);
-    const split = $("#rail-split");
-    if (split) {
-      const showSplit = state.body === "earth";
-      split.classList.toggle("hidden", !showSplit);
-      split.querySelectorAll("[data-set]").forEach((btn) => {
-        btn.setAttribute("aria-pressed", String(btn.dataset.set === state.set));
-      });
-    }
-    const discoveredView = state.body === "earth" && state.set === "discovered";
-    $("#rail-title").textContent = discoveredView
+    const twinMode = state.body === "earth" && Boolean(state.twinSource);
+    const discoveredView = state.body === "earth" && state.set === "discovered" && !twinMode;
+    $("#rail-title").textContent = twinMode
+      ? "Earth matches"
+      : discoveredView
       ? "Discovered candidates"
       : BODY_META[state.body].title;
-    $("#rail-note").textContent = discoveredView
+    $("#rail-note").textContent = twinMode
+      ? twinNote()
+      : discoveredView
       ? discoveredNote()
       : BODY_META[state.body].note;
     $("#rail-count").textContent = rows.length;
@@ -321,6 +347,15 @@
       btn.addEventListener("click", () => selectSite(site.id));
       list.appendChild(btn);
     });
+  }
+
+  function twinNote() {
+    const source = state.twinSource ? state.twinSource.name : "the selected target";
+    return (
+      "Closest terrestrial analogs for " + source + " across both shortlists (" +
+      SITES.earth.length + " curated + " + SITES.discovered.length + " discovered, tagged \u25c7). " +
+      "Compared on temperature, day/night swing, solar, slope, roughness, water and dust."
+    );
   }
 
   function discoveredNote() {
@@ -518,7 +553,7 @@
       body,
       conditions,
       site: pseudo,
-      matches: R.topTwins(SITES.earth, pseudo, 6)
+      matches: R.topTwins(twinnableSites(), pseudo, 8)
     };
     state.selected[body] = null;
     $("#stage-title").textContent = "Point query · " + label;
@@ -537,6 +572,7 @@
     state.twinSource = twin;
     state.layer.earth = "earth_twin";
     state.point = null;
+    syncSetTo(target);
     setBody("earth");
     renderTwinBanner();
     if (target) selectSite(target);
@@ -790,7 +826,7 @@
     });
 
     earthMap.on("click", (event) => {
-      const nearest = R.nearestEarth(SITES.earth, event.latlng.lat, event.latlng.lng);
+      const nearest = R.nearestEarth(twinnableSites(), event.latlng.lat, event.latlng.lng);
       const screen = prospectScoreAt(event.latlng.lat, event.latlng.lng);
       const screenLine =
         screen == null
@@ -802,7 +838,10 @@
               : '<span class="text-muted">— outside the analog envelope</span>') +
             "</p>";
       if (nearest && nearest.km < 700) {
+        syncSetTo(nearest.site.id);
+        renderLayers();
         selectSite(nearest.site.id);
+        renderEarthMarkers();
         return;
       }
       $("#legend").innerHTML =
@@ -812,7 +851,7 @@
         fmt(Math.abs(event.latlng.lng), 2) + "° " + (event.latlng.lng >= 0 ? "E" : "W") + "</p>" +
         screenLine +
         '<p class="mt-1 text-[11px] leading-relaxed text-muted">' +
-        (nearest ? "Nearest catalogued analog: " + nearest.site.name + ", " + fmt(nearest.km) + " km." : "") +
+        (nearest ? "Nearest Earth site: " + nearest.site.name + ", " + fmt(nearest.km) + " km." : "") +
         "</p>";
     });
   }
@@ -1154,8 +1193,12 @@
       if (layer instanceof L.Circle) earthMap.removeLayer(layer);
     });
 
+    const twinMode = Boolean(state.twinSource);
+    const showCurated = twinMode || state.set !== "discovered";
+    const showDiscovered = twinMode || state.set === "discovered";
+
     SITES.earth.forEach((site) => {
-      if (state.set === "discovered") return;
+      if (!showCurated) return;
       const card = scoreFor(site);
       const isSelected = state.selected.earth === site.id;
       const color = isSelected ? selectedPinColor() : pinColor(card.letter);
@@ -1200,7 +1243,7 @@
       }
     });
 
-    if (state.set !== "discovered") return;
+    if (!showDiscovered) return;
 
     /* Discovered candidates use the same teardrop inside a dashed ring so the
        map reads "screened, not surveyed" at a glance. */
@@ -1938,14 +1981,15 @@
       );
     }
 
-    const twins = R.topTwins(SITES.earth, site, 3);
+    const twins = R.topTwins(twinnableSites(), site, 3);
     const rows = twins
       .map(
         (t) =>
           '<button type="button" class="site-row !py-1.5" data-twin="' + t.site.id + '">' +
             '<span class="grid h-8 w-11 shrink-0 place-items-center rounded-lg border border-white/10 text-[12px] tabular-nums text-bone">' + t.match.score + "</span>" +
             '<span class="min-w-0 flex-1"><span class="block truncate text-[12px] text-bone">' + t.site.name + "</span>" +
-            '<span class="block truncate text-[10px] text-muted">' + t.site.region + "</span></span>" +
+            '<span class="block truncate text-[10px] text-muted">' + t.site.region +
+              (t.site.prospect ? ' · <span class="text-ice/80">screened</span>' : "") + "</span></span>" +
           "</button>"
       )
       .join("");
@@ -1970,7 +2014,7 @@
       host.innerHTML = "";
       return;
     }
-    const twins = R.topTwins(SITES.earth, state.twinSource, 3);
+    const twins = R.topTwins(twinnableSites(), state.twinSource, 3);
     host.classList.remove("hidden");
     host.innerHTML =
       '<div class="flex flex-wrap items-center gap-2 rounded-xl border border-ice/25 bg-[#061019]/85 px-3 py-2 backdrop-blur-md">' +
@@ -1978,6 +2022,7 @@
         '<span class="text-[12px] text-bone">for ' + state.twinSource.name + "</span>" +
         twins.map((t) =>
           '<button type="button" class="layer-btn !py-1" data-twin="' + t.site.id + '">' +
+            (t.site.prospect ? '<span class="text-ice/70" aria-hidden="true">\u25c7 </span>' : "") +
             t.site.name + ' <span class="tabular-nums text-ice">' + t.match.score + "</span></button>"
         ).join("") +
         '<button type="button" class="layer-btn !py-1 ml-auto" data-close-twin="1" aria-label="Exit twin mode">Exit</button>' +
@@ -1990,10 +2035,11 @@
   function openTwin(siteId) {
     const source = Object.values(SITES).flat().find((s) => s.id === siteId);
     if (!source) return;
+    const best = R.topTwins(twinnableSites(), source, 1)[0];
     state.twinSource = source;
     state.layer.earth = "earth_twin";
+    if (best) syncSetTo(best.site.id);
     setBody("earth");
-    const best = R.topTwins(SITES.earth, source, 1)[0];
     if (best) selectSite(best.site.id);
     renderTwinBanner();
   }
@@ -2275,7 +2321,7 @@
   preloadRasters();
   if (!applyHash()) setBody("moon");
   if (state.body === "earth" && state.twinSource && !state.selected.earth) {
-    const best = R.topTwins(SITES.earth, state.twinSource, 1)[0];
+    const best = R.topTwins(twinnableSites(), state.twinSource, 1)[0];
     if (best) selectSite(best.site.id, false);
   } else if (state.body !== "earth" && !state.selected[state.body]) {
     const top = sortedSites(state.body)[0];
