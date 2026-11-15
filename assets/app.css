@@ -940,4 +940,36 @@ dialog::backdrop {
   .gpin.is-selected .gpin-dot::after { animation: none; opacity: 0.4; }
 }
 
+/* Zoom stepper for the globes — mirrors the Leaflet control on the flat map so
+   Moon/Mars users get the same affordance, including on touch. */
+.globe-zoom {
+  display: flex;
+  flex-direction: column;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: rgba(10, 16, 30, 0.9);
+  box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+}
+.globe-zoom[hidden] { display: none; }
+.globe-zoom button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--bone);
+  background: transparent;
+  transition: background-color 0.18s var(--ease-spring), color 0.18s var(--ease-spring);
+}
+.globe-zoom button + button { border-top: 1px solid var(--line); }
+.globe-zoom button:hover { background: rgba(24, 34, 54, 0.95); color: #fff; }
+.globe-zoom button:active { background: rgba(245, 166, 35, 0.18); }
+.globe-zoom button:focus-visible { outline: 2px solid var(--ice); outline-offset: -2px; }
+.globe-zoom button:disabled {
+  color: rgba(236, 230, 216, 0.28);
+  background: transparent;
+  cursor: default;
+}
+
 /* Keep the legend clear of the layer drawer. */

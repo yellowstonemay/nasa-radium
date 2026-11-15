@@ -124,7 +124,10 @@ ring, soft glow and drop shadow, plus a dashed radius ring around the selection 
 
 Both: clicking a pin selects that site; clicking bare surface drops the click marker and runs a point
 query. On the globe that is enforced twice — the point handler suppresses the globe click, and a
-globe click within 2.6° of a site is treated as a selection rather than a query.
+globe click within 2.6° of a site is treated as a selection rather than a query. Both stages also
+carry a **zoom stepper** at the bottom right: Leaflet's own control on Earth, and a matching
+`+ / −` group that walks the globe camera in fixed altitude ratios (0.45–5.6 globe radii) and
+disables itself at either limit.
 
 ### Site imagery (real, never generated)
 

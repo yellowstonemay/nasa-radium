@@ -99,6 +99,19 @@
     <div id="legend" class="pointer-events-none absolute bottom-3 left-3 z-[1200] max-w-[280px] rounded-xl border border-white/10 bg-[#070c17]/75 px-3 py-2 backdrop-blur-md"></div>
 
     <div id="twin-banner" class="pointer-events-auto absolute inset-x-3 bottom-3 z-[1200] hidden"></div>
+
+    <div id="globe-zoom" class="globe-zoom absolute bottom-3 right-3 z-[1200]" role="group" aria-label="Zoom the globe">
+      <button type="button" data-globe-zoom="in" aria-label="Zoom in" title="Zoom in">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+          <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </button>
+      <button type="button" data-globe-zoom="out" aria-label="Zoom out" title="Zoom out">
+        <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true" fill="none">
+          <path d="M3 8h10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        </svg>
+      </button>
+    </div>
   </section>
 
   <aside class="panel flex min-h-[320px] flex-col overflow-hidden">

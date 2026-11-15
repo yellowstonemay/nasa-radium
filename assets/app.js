@@ -235,6 +235,8 @@
     if (body !== "earth") state.twinSource = null;
     $("#view-globe").classList.toggle("hidden", body === "earth");
     $("#view-earth").classList.toggle("hidden", body !== "earth");
+    // The flat map ships its own Leaflet stepper; the globes get this one.
+    document.getElementById("globe-zoom").hidden = body === "earth";
     renderTabs();
     $("#rail-title").textContent = BODY_META[body].title;
     $("#rail-note").textContent = BODY_META[body].note;
@@ -693,6 +695,7 @@
     const altitude = (globe.pointOfView() || {}).altitude || 2.4;
     host.style.setProperty("--gpin-scale", (1.24 - altitude * 0.14).toFixed(3));
     globe.ringMaxRadius((d) => (d.selected ? 3.6 : 2.4));
+    syncZoomButtons(altitude);
 
     // Chips are placed by a tiny greedy force layout: the best-ranked pin tries
     // to sit straight above its dot, and each pin after it takes the nearest
@@ -845,10 +848,45 @@
 
   /* Fly the camera, then re-solve the pin fan once the tween has landed: the
      throttled layout only fires while 'change' events keep arriving. */
-  function flyTo(target, ms) {
+  function flyTo(target, ms, altitude) {
     if (!globe) return;
-    globe.pointOfView(Object.assign({}, target, { altitude: stageAltitude() }), ms);
+    const alt = altitude == null ? stageAltitude() : altitude;
+    globe.pointOfView(Object.assign({}, target, { altitude: alt }), ms);
     setTimeout(updatePinLayout, ms + 90);
+  }
+
+  /* Zoom stepper. Altitude is measured in globe radii and the OrbitControls
+     limits are 140-680 px against a 100 px globe, so the usable range is
+     0.4-5.8; a fixed ratio gives even steps at every scale. */
+  const GLOBE_ALT = { min: 0.45, max: 5.6, ratio: 0.72 };
+
+  function nudgeGlobeZoom(direction) {
+    if (!globe) return;
+    const pov = globe.pointOfView() || {};
+    const current = pov.altitude == null ? 2.4 : pov.altitude;
+    const next = direction > 0 ? current * GLOBE_ALT.ratio : current / GLOBE_ALT.ratio;
+    flyTo({ lat: pov.lat, lng: pov.lng }, 360, Math.min(GLOBE_ALT.max, Math.max(GLOBE_ALT.min, next)));
+  }
+
+  function syncZoomButtons(altitude) {
+    const group = document.getElementById("globe-zoom");
+    if (!group) return;
+    const zoomIn = group.querySelector('[data-globe-zoom="in"]');
+    const zoomOut = group.querySelector('[data-globe-zoom="out"]');
+    if (zoomIn) zoomIn.disabled = altitude <= GLOBE_ALT.min + 0.01;
+    if (zoomOut) zoomOut.disabled = altitude >= GLOBE_ALT.max - 0.01;
+  }
+
+  function initGlobeZoom() {
+    const group = document.getElementById("globe-zoom");
+    if (!group || group.dataset.bound) return;
+    group.dataset.bound = "1";
+    group.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("[data-globe-zoom]");
+      if (!btn || btn.disabled) return;
+      ev.stopPropagation();
+      nudgeGlobeZoom(btn.dataset.globeZoom === "in" ? 1 : -1);
+    });
   }
 
   function stageAltitude() {
@@ -2416,6 +2454,7 @@
   renderSources();
   renderWeightControls();
   renderTabs();
+  initGlobeZoom();
 
   /* Deep links: #earth:earth_twin, #mars, ... makes demo jumps and
      screenshot verification deterministic. */
