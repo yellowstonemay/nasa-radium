@@ -234,6 +234,16 @@
     });
   }
 
+  /* The stage label follows the mode, not just the body. */
+  function updateStageTitle() {
+    const host = document.getElementById("stage-title");
+    if (!host) return;
+    host.textContent =
+      state.body === "earth" && state.twinSource
+        ? "Earth matches · " + state.twinSource.name
+        : BODY_META[state.body].title;
+  }
+
   function setBody(body) {
     if (state.body === body && state.point) {
       state.point = null;
@@ -249,7 +259,7 @@
     renderTabs();
     $("#rail-title").textContent = BODY_META[body].title;
     $("#rail-note").textContent = BODY_META[body].note;
-    $("#stage-title").textContent = BODY_META[body].title;
+    updateStageTitle();
     renderLayers();
     renderRail();
     renderDetail();
@@ -405,13 +415,22 @@
   }
 
   function selectSite(id, fly) {
+    const pool = state.body === "earth" ? twinnableSites() : SITES[state.body];
+    if (!pool || !pool.some((s) => s.id === id)) {
+      // Safety net: an id from another body is never selected silently.
+      const owner = ["moon", "mars", "earth"].find((body) =>
+        (body === "earth" ? twinnableSites() : SITES[body]).some((s) => s.id === id)
+      );
+      if (!owner) return;
+      setBody(owner);
+    }
     state.point = null;
     if (state.earthPoint) {
       state.earthPoint = null;
-      document.getElementById("stage-title").textContent = BODY_META[state.body].title;
       if (state.body === "earth") renderEarthMarkers();
     }
     state.selected[state.body] = id;
+    updateStageTitle();
     renderRail();
     renderDetail();
     highlightOnStage(fly !== false);
@@ -599,17 +618,37 @@
     }
   }
 
-  function openPointTwins(matchId) {
-    if (!state.point) return;
-    const twin = state.point.site;
-    const target = matchId || (state.point.matches[0] && state.point.matches[0].site.id);
-    state.twinSource = twin;
+  /* One way into Earth twin mode, used by the dossier button, the match rows and
+     the point-query list, so all three land in the same state. */
+  function enterEarthTwin(source, targetId) {
+    if (source) state.twinSource = source;
     state.layer.earth = "earth_twin";
-    state.point = null;
-    syncSetTo(target);
+    if (targetId) syncSetTo(targetId);
     setBody("earth");
     renderTwinBanner();
-    if (target) selectSite(target);
+    if (targetId) selectSite(targetId);
+    else updateStageTitle();
+  }
+
+  function openPointTwins(matchId) {
+    if (!state.point) return;
+    const source = state.point.site;
+    const target = matchId || (state.point.matches[0] && state.point.matches[0].site.id);
+    enterEarthTwin(source, target);
+  }
+
+  /* A match row can be clicked from a Moon or Mars dossier, where the id belongs
+     to the Earth lists: follow it into twin mode instead of selecting an id that
+     body does not have (which used to blank the dossier). */
+  function openTwinMatch(earthId) {
+    const target = twinnableSites().find((s) => s.id === earthId);
+    if (!target) return;
+    if (state.body === "earth") {
+      selectSite(earthId);
+      return;
+    }
+    const source = selectedSite() || (state.point ? state.point.site : null);
+    enterEarthTwin(source, earthId);
   }
 
   /* --------------------------------------------------------------- globe */
@@ -1484,7 +1523,7 @@
   function clearEarthPoint() {
     if (!state.earthPoint) return;
     state.earthPoint = null;
-    document.getElementById("stage-title").textContent = BODY_META.earth.title;
+    updateStageTitle();
     renderEarthMarkers();
     renderLegend();
   }
@@ -2670,12 +2709,7 @@
     const source = Object.values(SITES).flat().find((s) => s.id === siteId);
     if (!source) return;
     const best = R.topTwins(twinnableSites(), source, 1)[0];
-    state.twinSource = source;
-    state.layer.earth = "earth_twin";
-    if (best) syncSetTo(best.site.id);
-    setBody("earth");
-    if (best) selectSite(best.site.id);
-    renderTwinBanner();
+    enterEarthTwin(source, best && best.site.id);
   }
 
   /* ------------------------------------------------------ mission designer */
@@ -2905,7 +2939,7 @@
     }
     const twinBtn = event.target.closest("[data-twin]");
     if (twinBtn) {
-      selectSite(twinBtn.dataset.twin);
+      openTwinMatch(twinBtn.dataset.twin);
       return;
     }
     const openBtn = event.target.closest("[data-open-twin]");
@@ -2918,6 +2952,7 @@
       renderTwinBanner();
       renderRail();
       renderEarthMarkers();
+      updateStageTitle();
     }
   });
 

@@ -14,7 +14,7 @@ query anywhere, plus a graded shortlist on each body:
 | **Grade any point** | click any point on the *Earth* map → that coordinate is graded A–F on the same rubric (plus the Earth-only open-land row), from shipped WorldClim / AWS Terrain / MODIS rasters, and shows what it resembles on the Moon and Mars |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
-| **Earth Twin mode** | any site or clicked point → the map jumps to Earth and ranks its closest matches from both shortlists; discovered hits are tagged `screened` and keep their dashed pin |
+| **Earth Twin mode** | any site or clicked point → the map jumps to Earth and ranks its closest matches from both shortlists; discovered hits are tagged `screened` and keep their dashed pin. The button and the match rows in a Moon or Mars dossier both enter the mode, with that match already selected |
 
 ## Run it
 
