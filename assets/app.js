@@ -185,11 +185,6 @@
         .map((row) => Object.assign(row, { match: R.similarity(state.twinSource, row.site).score }))
         .sort((a, b) => b.match - a.match);
     }
-    // Discovered candidates keep the scan order: their screen score is the
-    // discovery ranking, while the letter badge stays the shared rubric grade.
-    if (body === "earth" && state.set === "discovered") {
-      return rows.sort((a, b) => b.site.screenScore - a.site.screenScore);
-    }
     return rows.sort((a, b) => b.card.value - a.card.value);
   }
 
@@ -311,14 +306,17 @@
         '<span class="min-w-0 flex-1">' +
           '<span class="block truncate text-[13px] text-bone">' + site.name + "</span>" +
           '<span class="mt-0.5 block truncate text-[11px] text-muted">' +
-            site.region + (site.prospect ? " · screened" : "") +
+            site.region +
+            (site.prospect
+              ? ' · <span class="text-ice/80">screen ' + fmt(site.screenScore, 1) + "</span>"
+              : "") +
           "</span>" +
         "</span>" +
         '<span class="text-right">' +
           '<span class="block text-[13px] tabular-nums text-bone">' +
-            fmt(match != null ? match : discoveredView ? site.screenScore : card.value, 1) + "</span>" +
+            fmt(match != null ? match : card.value, 1) + "</span>" +
           '<span class="block text-[10px] uppercase tracking-widest text-muted">' +
-            (match != null ? "match" : discoveredView ? "screen" : "#" + (index + 1)) + "</span>" +
+            (match != null ? "match" : "#" + (index + 1)) + "</span>" +
         "</span>";
       btn.addEventListener("click", () => selectSite(site.id));
       list.appendChild(btn);
@@ -330,9 +328,11 @@
     const cells = meta ? meta.screenedCells.toLocaleString() : "1,000,000";
     return (
       "New candidates found by the global scan: " + cells +
-      " quarter-degree land cells scored against the measured envelope of the 40 catalogued analogs " +
-      "(AWS terrain tiles + WorldClim bio), de-duplicated to 700 km spacing and capped per country. " +
-      "Climate and terrain are measured; the qualitative rows are proxies, so these sites are proposals to survey, not established analogs."
+      " quarter-degree land cells scored against the measured envelope of the 40 catalogued analogs. " +
+      "Ranked here by the same rubric grade as every other site, so the number on the right is the grade. " +
+      "The smaller \u201cscreen\u201d value is what found the site \u2014 how closely its climate and terrain match that " +
+      "envelope; the grade also weighs water, dust and operations. " +
+      "Qualitative rows are proxies, so these sites are proposals to survey, not established analogs."
     );
   }
 
@@ -1904,7 +1904,9 @@
         '<p class="mt-1 text-[11px] leading-relaxed text-bone/85">' +
           "Not in any analog catalogue. The global scan (AWS terrain tiles + WorldClim 2.1) scored " +
           "this cell " + fmt(site.screenScore, 1) + " / 100 against the measured envelope of the " +
-          "40 curated analogs, then NASA POWER and ETOPO1 were queried here for the exact numbers above." +
+          "40 curated analogs, then NASA POWER and ETOPO1 were queried here for the exact numbers above. " +
+          "That screen score measures analog-likeness only; the letter grade is the base-suitability " +
+          "rubric, which also weighs water, dust and operations, so a high screen can still grade modestly." +
         "</p>" +
         '<div class="mt-2 grid grid-cols-2 gap-1.5 text-[11px]">' +
           '<div class="rounded-lg border border-white/[0.06] bg-white/[0.02] px-2 py-1.5">' +
