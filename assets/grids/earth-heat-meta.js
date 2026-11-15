@@ -1,17 +1,18 @@
 window.RADIUM_GRID_EARTH_HEAT = {
   "file": "assets/grids/earth-heat.png",
   "width": 1440,
-  "height": 720,
+  "height": 1440,
   "bounds": [
     [
-      -90,
+      -85.0511287798,
       -180
     ],
     [
-      90,
+      85.0511287798,
       180
     ]
   ],
+  "projection": "Web Mercator, square",
   "min": -25.0,
   "max": 32.0,
   "cells": 224663,

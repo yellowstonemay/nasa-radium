@@ -88,7 +88,10 @@ All five data layers draw through **one ramp family** (deep violet at the low en
 through the middle, amber at the top) so they read as the same instrument, and each carries a legend
 with its real value range. Opacity is 86% by default and the alpha curve is biased toward the high
 end, so the field is unmistakable under a data layer while the imagery still shows through. Rasters ship as 8-bit masks and are colourised in the browser, so the
-ramp, the opacity slider and the legend always agree. The two interpolated fields (grade, twin) are
+ramp, the opacity slider and the legend always agree. Every Earth raster and generated field is
+square (1440x1440) and resampled onto **Web Mercator rows**, because Leaflet paints an image overlay
+as a single quad: shipping equirectangular data put the 30 N row at 50 N on screen (a 20 degree
+drift, visible as the warm belt sitting over Canada). The two interpolated fields (grade, twin) are
 computed at 1440x720 with a 1,300 km fade radius, which keeps them as local halos around measured
 sites instead of washing out whole continents.
 

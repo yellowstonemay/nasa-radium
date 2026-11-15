@@ -323,11 +323,14 @@ body::before {
 
 .layer-btn {
   display: inline-flex;
+  flex: none;
+  white-space: nowrap;
   align-items: center;
   gap: 0.45rem;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(8, 13, 24, 0.72);
+  background: rgba(8, 13, 24, 0.92);
+  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.9);
   padding: 0.4rem 0.75rem;
   font-size: 0.7rem;
   letter-spacing: 0.05em;
@@ -341,8 +344,11 @@ body::before {
 .layer-btn:active { transform: scale(0.97); }
 .layer-btn[aria-pressed="true"] {
   color: var(--bone);
-  border-color: rgba(245, 166, 35, 0.55);
-  background: rgba(245, 166, 35, 0.16);
+  border-color: rgba(245, 166, 35, 0.6);
+  /* A dark base under the amber tint, so the chip stays legible over bright
+     imagery such as the Greenland ice sheet. */
+  background: linear-gradient(180deg, rgba(245, 166, 35, 0.26), rgba(245, 166, 35, 0.12)),
+    rgba(8, 13, 24, 0.94);
 }
 
 /* Curated / discovered switch above the Earth shortlist. */#rail-split:not(.hidden) { display: flex; }
@@ -571,11 +577,14 @@ dialog::backdrop {
    layer control costs a couple of chips instead of a full-height panel. */
 .layer-pill {
   display: inline-flex;
+  flex: none;
+  min-width: 0;
   align-items: center;
   gap: 0.4rem;
   border-radius: 999px;
   border: 1px solid var(--line);
-  background: rgba(8, 13, 24, 0.82);
+  background: rgba(8, 13, 24, 0.92);
+  box-shadow: 0 8px 20px -14px rgba(0, 0, 0, 0.9);
   padding: 0.3rem 0.6rem 0.3rem 0.7rem;
   color: var(--bone);
   backdrop-filter: blur(10px);
@@ -586,8 +595,9 @@ dialog::backdrop {
 .layer-pill:focus-visible { outline: 2px solid var(--ice); outline-offset: 2px; }
 .layer-pill:active { transform: scale(0.98); }
 .layer-pill[aria-expanded="true"] {
-  border-color: rgba(93, 220, 201, 0.5);
-  background: rgba(93, 220, 201, 0.12);
+  border-color: rgba(93, 220, 201, 0.55);
+  background: linear-gradient(180deg, rgba(93, 220, 201, 0.22), rgba(93, 220, 201, 0.1)),
+    rgba(8, 13, 24, 0.94);
 }
 .layer-pill__kicker {
   font-size: 9px;
@@ -597,7 +607,7 @@ dialog::backdrop {
 }
 .layer-pill__value {
   font-size: 11.5px;
-  max-width: 11rem;
+  max-width: 8.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

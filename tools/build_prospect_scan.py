@@ -43,6 +43,8 @@ GRIDS = ROOT / "assets" / "grids"
 DATA = ROOT / "assets" / "data"
 
 W, H = 1440, 720          # 0.25 degree screening grid
+MERC_LAT = 85.0511287798   # Leaflet draws image overlays linearly in Web Mercator
+MERC_PX = 1440             # shipped rasters are square: one pixel per mercator step
 DEM_Z = 5                 # 32x32 terrarium tiles -> 4.9 km pixels at the equator
 TILE = 256
 
@@ -606,21 +608,39 @@ def load_places():
     }
 
 # ------------------------------------------------------------------ output
+def to_mercator(values: np.ndarray, valid: np.ndarray):
+    """Resample the equirectangular grid onto square Web Mercator rows.
+
+    Leaflet paints an image overlay as a single quad, so its rows are laid out
+    linearly in projected space. Shipping equirectangular data would put the
+    30 N row at 50 N on screen (a 20 degree shift) until it is reprojected here.
+    """
+    rows = np.arange(MERC_PX) + 0.5
+    merc_y = (1.0 - 2.0 * rows / MERC_PX) * math.pi
+    lat = np.degrees(np.arctan(np.sinh(merc_y)))
+    src_row = np.clip(((90.0 - lat) / 180.0 * H).astype(int), 0, H - 1)
+    src_col = np.clip((np.arange(MERC_PX) * W // MERC_PX), 0, W - 1)
+    return values[np.ix_(src_row, src_col)], valid[np.ix_(src_row, src_col)]
+
+
 def encode_raster(values: np.ndarray, valid: np.ndarray, lo: float, hi: float,
                   name: str, meta_extra: dict) -> None:
     """Write a masked 8-bit raster where 0 means 'no data' and 1..255 is the value."""
-    scaled = np.zeros((H, W), dtype=np.uint8)
+    cells = int(valid.sum())
+    values, valid = to_mercator(values, valid)
+    scaled = np.zeros(values.shape, dtype=np.uint8)
     normalised = np.clip((values[valid] - lo) / (hi - lo), 0.0, 1.0)
     scaled[valid] = np.clip(np.round(normalised * 254.0) + 1.0, 1, 255).astype(np.uint8)
     Image.fromarray(scaled, mode="L").save(GRIDS / f"{name}.png", optimize=True)
     meta = {
         "file": f"assets/grids/{name}.png",
-        "width": W,
-        "height": H,
-        "bounds": [[-90, -180], [90, 180]],
+        "width": MERC_PX,
+        "height": MERC_PX,
+        "bounds": [[-MERC_LAT, -180], [MERC_LAT, 180]],
+        "projection": "Web Mercator, square",
         "min": lo,
         "max": hi,
-        "cells": int(valid.sum()),
+        "cells": cells,
     }
     meta.update(meta_extra)
     body = "window." + meta_extra["global"] + " = " + json.dumps(meta, indent=2) + ";\n"
@@ -632,25 +652,12 @@ def write_elevation(layers: dict[str, np.ndarray], ok: np.ndarray) -> None:
     """Ship the DEM the screen uses as a colourisable elevation raster."""
     elev = layers["elev"]
     valid = ok & np.isfinite(elev)
-    lo, hi = -400.0, 6000.0
-    scaled = np.zeros((H, W), dtype=np.uint8)
-    normalised = np.clip((elev[valid] - lo) / (hi - lo), 0.0, 1.0)
-    scaled[valid] = np.clip(np.round(normalised * 254.0) + 1.0, 1, 255).astype(np.uint8)
-    Image.fromarray(scaled, mode="L").save(GRIDS / "earth-elev.png", optimize=True)
-    meta = {
-        "file": "assets/grids/earth-elev.png",
-        "width": W,
-        "height": H,
-        "bounds": [[-90, -180], [90, 180]],
-        "minM": lo,
-        "maxM": hi,
-        "screenedCells": int(valid.sum()),
+    encode_raster(elev, valid, -400.0, 6000.0, "earth-elev", {
+        "global": "RADIUM_GRID_EARTH_ELEV",
+        "units": "metres",
         "source": "AWS Terrain Tiles (Mapzen terrarium, SRTM/NED/GMTED/ETOPO blend), 0.25 degree cell means",
-        "url": "https://registry.opendata.aws/terrain-tiles/"
-    }
-    body = "window.RADIUM_GRID_EARTH_ELEV = " + json.dumps(meta, indent=2) + ";\n"
-    (GRIDS / "earth-elev-meta.js").write_text(body, encoding="utf-8")
-    print(f"wrote earth-elev.png ({int(valid.sum())} cells)")
+        "url": "https://registry.opendata.aws/terrain-tiles/",
+    })
 
     # WorldClim annual mean temperature is global and complete, so it makes a far
     # better heat map than interpolating blobs around 40 stations.
@@ -667,16 +674,19 @@ def write_elevation(layers: dict[str, np.ndarray], ok: np.ndarray) -> None:
 def write_field(score: np.ndarray, ok: np.ndarray, envelope: dict[str, dict]) -> None:
     """Encode the screening score as a grayscale raster: 0 means 'not screened'."""
     GRIDS.mkdir(parents=True, exist_ok=True)
-    scaled = np.zeros((H, W), dtype=np.uint8)
     valid = ok & np.isfinite(score)
-    scaled[valid] = np.clip(np.round(score[valid] / 100.0 * 254.0) + 1.0, 1, 255).astype(np.uint8)
+    cell_count = int(valid.sum())
+    values, valid = to_mercator(score, valid)
+    scaled = np.zeros(values.shape, dtype=np.uint8)
+    scaled[valid] = np.clip(np.round(values[valid] / 100.0 * 254.0) + 1.0, 1, 255).astype(np.uint8)
     Image.fromarray(scaled, mode="L").save(GRIDS / "earth-prospect.png", optimize=True)
 
     meta = {
-        "width": W,
-        "height": H,
-        "bounds": [[-90, -180], [90, 180]],
-        "screenedCells": int(valid.sum()),
+        "width": MERC_PX,
+        "height": MERC_PX,
+        "bounds": [[-MERC_LAT, -180], [MERC_LAT, 180]],
+        "projection": "Web Mercator, square",
+        "screenedCells": cell_count,
         "threshold": 0,
         "envelope": {
             key: {

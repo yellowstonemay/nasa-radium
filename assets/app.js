@@ -818,9 +818,25 @@
   }
 
   /* ------------------------------------------- computed Earth field layers */
+  /* Leaflet paints an image overlay as one quad, so rows are laid out linearly
+     in Web Mercator. Every Earth raster and canvas is therefore square and
+     mercator-rowed, or latitudes drift (the 30 N colour would land at 50 N). */
+  const MERC_LAT = 85.0511287798;
+  const RASTER_BOUNDS = [[-MERC_LAT, -180], [MERC_LAT, 180]];
   const FIELD_W = 1440;
-  const FIELD_H = 720;
+  const FIELD_H = 1440;
   const FIELD_MASK_KM = 1300;
+
+  function mercatorRowToLat(row, height) {
+    const y = (1 - (2 * row) / height) * Math.PI;
+    return (Math.atan(Math.sinh(y)) * 180) / Math.PI;
+  }
+
+  function latToMercatorRow(lat, height) {
+    const clamped = Math.max(-MERC_LAT, Math.min(MERC_LAT, lat));
+    const y = Math.log(Math.tan(Math.PI / 4 + (clamped * Math.PI) / 360));
+    return ((1 - y / Math.PI) / 2) * height;
+  }
 
   /* One ramp family for the whole map: violet where a value is low or missing,
      teal and lime through the middle, amber at the top. Matches the layer design
@@ -890,17 +906,21 @@
      site so the layer never invents a value in the middle of an empty ocean. */
   function buildFieldCanvas(points, lo, hi) {
     const span = Math.max(1e-6, hi - lo);
-    const canvas = document.createElement("canvas");
-    canvas.width = FIELD_W;
-    canvas.height = FIELD_H;
-    const ctx = canvas.getContext("2d");
-    const image = ctx.createImageData(FIELD_W, FIELD_H);
+    // Interpolate at half resolution (the field is smooth) and scale up with
+    // smoothing: 4x cheaper and visually identical.
+    const halfW = FIELD_W / 2;
+    const halfH = FIELD_H / 2;
+    const small = document.createElement("canvas");
+    small.width = halfW;
+    small.height = halfH;
+    const smallCtx = small.getContext("2d");
+    const image = smallCtx.createImageData(halfW, halfH);
     const data = image.data;
 
-    for (let y = 0; y < FIELD_H; y += 1) {
-      const lat = 90 - ((y + 0.5) * 180) / FIELD_H;
-      for (let x = 0; x < FIELD_W; x += 1) {
-        const lon = -180 + ((x + 0.5) * 360) / FIELD_W;
+    for (let y = 0; y < halfH; y += 1) {
+      const lat = mercatorRowToLat(y + 0.5, halfH);
+      for (let x = 0; x < halfW; x += 1) {
+        const lon = -180 + ((x + 0.5) * 360) / halfW;
         let wSum = 0;
         let vSum = 0;
         let nearest = Infinity;
@@ -912,7 +932,7 @@
           wSum += w;
           vSum += w * p.value;
         }
-        const idx = (y * FIELD_W + x) * 4;
+        const idx = (y * halfW + x) * 4;
         if (!wSum || nearest > FIELD_MASK_KM) {
           data[idx + 3] = 0;
           continue;
@@ -926,7 +946,15 @@
         data[idx + 3] = Math.round(fade * (52 + 168 * Math.pow(t, 0.95)));
       }
     }
-    ctx.putImageData(image, 0, 0);
+    smallCtx.putImageData(image, 0, 0);
+
+    const canvas = document.createElement("canvas");
+    canvas.width = FIELD_W;
+    canvas.height = FIELD_H;
+    const ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(small, 0, 0, FIELD_W, FIELD_H);
     return canvas.toDataURL("image/png");
   }
 
@@ -1009,7 +1037,7 @@
     const entry = rasterCache[id];
     if (!entry || !entry.scores) return null;
     const col = Math.floor(((lon + 180) / 360) * entry.width) % entry.width;
-    const row = Math.floor(((90 - lat) / 180) * entry.height);
+    const row = Math.floor(latToMercatorRow(lat, entry.height));
     if (row < 0 || row >= entry.height) return null;
     const raw = entry.scores[row * entry.width + col];
     if (!raw) return null;
@@ -1039,7 +1067,7 @@
     if (!field) return;
     const url = buildFieldCanvas(field.points, field.lo, field.hi);
     if (earthLayers.earth_field) earthMap.removeLayer(earthLayers.earth_field);
-    earthLayers.earth_field = L.imageOverlay(url, [[-90, -180], [90, 180]], {
+    earthLayers.earth_field = L.imageOverlay(url, RASTER_BOUNDS, {
       opacity: state.opacity.earth,
       interactive: false,
       pane: "fieldPane"
@@ -1075,7 +1103,7 @@
         const [metaGlobal, rampName] = RASTER_BY_LAYER[layer.id];
         const entry = ensureRaster(layer.id, metaGlobal, rampName);
         if (entry && entry.url) {
-          earthLayers.earth_raster = L.imageOverlay(entry.url, [[-90, -180], [90, 180]], {
+          earthLayers.earth_raster = L.imageOverlay(entry.url, RASTER_BOUNDS, {
             opacity: state.opacity.earth,
             interactive: false,
             pane: "fieldPane"
@@ -1347,13 +1375,13 @@
         scale =
           '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.elev + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-            fmt(meta.minM, 0) + " m</span><span>" + fmt(meta.maxM, 0) + " m</span></div>";
+            fmt(meta.min, 0) + " m</span><span>" + fmt(meta.max, 0) + " m</span></div>";
       } else if (layer.kind === "temp") {
         const meta = window.RADIUM_GRID_EARTH_HEAT;
         scale =
           '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.heat + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-            fmt(meta.min, 0) + " ?C</span><span>" + fmt(meta.max, 0) + " ?C</span></div>";
+            fmt(meta.min, 0) + " °C</span><span>" + fmt(meta.max, 0) + " °C</span></div>";
       } else if (layer.kind === "raster") {
         const meta = window.RADIUM_PROSPECT_META;
         scale =
