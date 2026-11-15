@@ -682,12 +682,13 @@ def write_field(score: np.ndarray, ok: np.ndarray, envelope: dict[str, dict]) ->
     Image.fromarray(scaled, mode="L").save(GRIDS / "earth-prospect.png", optimize=True)
 
     meta = {
+        "file": "assets/grids/earth-prospect.png",
         "width": MERC_PX,
         "height": MERC_PX,
         "bounds": [[-MERC_LAT, -180], [MERC_LAT, 180]],
         "projection": "Web Mercator, square",
         "screenedCells": cell_count,
-        "threshold": 0,
+        "threshold": MIN_SCREEN_SCORE,
         "envelope": {
             key: {
                 "median": round(stat["median"], 3),
@@ -870,6 +871,13 @@ def main(argv: list[str]) -> int:
     ok = masks(layers)
     if "--rasters-only" in argv:
         write_elevation(layers, ok)
+        metrics = curated_metrics()
+        known = [
+            {"id": key, "lat": value["lat"], "lon": value["lon"], "name": key}
+            for key, value in metrics.items()
+        ]
+        envelope = build_envelope(layers, known)
+        write_field(score_field(layers, envelope), ok, envelope)
         return 0
 
     metrics = curated_metrics()

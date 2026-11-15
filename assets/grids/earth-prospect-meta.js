@@ -1,18 +1,20 @@
 window.RADIUM_PROSPECT_META = {
+  "file": "assets/grids/earth-prospect.png",
   "width": 1440,
-  "height": 720,
+  "height": 1440,
   "bounds": [
     [
-      -90,
+      -85.0511287798,
       -180
     ],
     [
-      90,
+      85.0511287798,
       180
     ]
   ],
+  "projection": "Web Mercator, square",
   "screenedCells": 224663,
-  "threshold": 0,
+  "threshold": 65,
   "envelope": {
     "tempMeanC": {
       "median": 12.198,

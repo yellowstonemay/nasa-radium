@@ -137,7 +137,7 @@
             {
               id: "earth_prospect",
               label: "Prospect scan",
-              note: "Quarter-degree cells scored against the analog envelope.",
+              note: "Analog-likeness of every quarter-degree cell; cells scoring 65+ are drawn.",
               kind: "raster"
             }
           ]
@@ -858,6 +858,13 @@
       [0.92, [242, 207, 74]],
       [1.0, [253, 246, 207]]
     ],
+    scan: [
+      [0.0, [24, 10, 48]],
+      [0.35, [92, 28, 120]],
+      [0.60, [38, 140, 120]],
+      [0.82, [150, 205, 70]],
+      [1.0, [236, 247, 150]]
+    ],
     elev: [
       [0.0, [14, 32, 66]],
       [0.25, [28, 88, 110]],
@@ -871,6 +878,7 @@
   const RAMP_CSS = {
     grade: "linear-gradient(90deg,#16092c,#3a1359,#1f7a6b,#8ec93e,#f7f3a0)",
     heat: "linear-gradient(90deg,#1b0b33,#4a1a6b,#8c2b8f,#c2456b,#e08a3c,#f2cf4a,#fdf6cf)",
+    scan: "linear-gradient(90deg,#180a30,#5c1c78,#268c78,#96cd46,#ecf796)",
     elev: "linear-gradient(90deg,#0e2042,#1c586e,#409262,#b29a56,#d8c398,#f8f4ec)"
   };
 
@@ -985,7 +993,8 @@
      colourised on the client with the same ramps the interpolated fields use. */
   const rasterCache = {};
 
-  function colouriseRaster(entry, image, rampName) {
+  function colouriseRaster(entry, image, rampName, floorPercent) {
+    const floor = floorPercent == null ? 0 : floorPercent;
     const width = entry.meta.width || image.width;
     const height = entry.meta.height || image.height;
     const canvas = document.createElement("canvas");
@@ -1003,12 +1012,17 @@
         data[i + 3] = 0;
         continue;
       }
-      const t = (value - 1) / 254;
+      const score = ((value - 1) / 254) * 100;
+      if (score < floor) {
+        data[i + 3] = 0;
+        continue;
+      }
+      const t = (score - floor) / Math.max(1e-6, 100 - floor);
       const rgb = rampAt(rampName, t);
       data[i] = rgb[0];
       data[i + 1] = rgb[1];
       data[i + 2] = rgb[2];
-      data[i + 3] = Math.round(38 + 185 * Math.pow(t, 0.9));
+      data[i + 3] = Math.round(30 + 150 * Math.pow(t, 0.95));
     }
     ctx.putImageData(pixels, 0, 0);
     entry.scores = scores;
@@ -1017,16 +1031,18 @@
     return canvas.toDataURL("image/png");
   }
 
-  function ensureRaster(id, metaGlobal, rampName) {
+  function ensureRaster(id, metaGlobal, rampName, floorPercent) {
     const existing = rasterCache[id];
     if (existing) return existing;
     const meta = window[metaGlobal];
-    if (!meta) return null;
-    const entry = { meta, url: null, scores: null, width: meta.width, height: meta.height };
+    if (!meta || !meta.file) return null;
+    const entry = {
+      meta, url: null, scores: null, width: meta.width, height: meta.height, floor: floorPercent || 0
+    };
     rasterCache[id] = entry;
     const image = new Image();
     image.onload = () => {
-      entry.url = colouriseRaster(entry, image, rampName);
+      entry.url = colouriseRaster(entry, image, rampName, floorPercent);
       if (state.body === "earth" && state.layer.earth === id) applyEarthLayer();
     };
     image.src = meta.file;
@@ -1050,10 +1066,9 @@
   }
 
   function preloadRasters() {
-    ensureRaster("earth_suit", "RADIUM_PROSPECT_META", "grade");
-    ensureRaster("earth_prospect", "RADIUM_PROSPECT_META", "grade");
-    ensureRaster("earth_elev", "RADIUM_GRID_EARTH_ELEV", "elev");
-    ensureRaster("earth_temp", "RADIUM_GRID_EARTH_HEAT", "heat");
+    Object.entries(RASTER_BY_LAYER).forEach(([id, [metaGlobal, rampName, floorPercent]]) => {
+      ensureRaster(id, metaGlobal, rampName, floorPercent);
+    });
   }
 
   function currentDataLayer() {
@@ -1077,10 +1092,13 @@
     renderLegend();
   }
 
+  /* id -> [meta global, ramp, display floor in percent]. The floor keeps the
+     prospect scan honest: it only paints cells that actually passed the screen,
+     instead of tinting every land cell. */
   const RASTER_BY_LAYER = {
-    earth_prospect: ["RADIUM_PROSPECT_META", "grade", 0, 100],
-    earth_elev: ["RADIUM_GRID_EARTH_ELEV", "elev", null, null],
-    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null, null]
+    earth_prospect: ["RADIUM_PROSPECT_META", "scan", 65],
+    earth_elev: ["RADIUM_GRID_EARTH_ELEV", "elev", null],
+    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null]
   };
 
   function applyEarthLayer() {
@@ -1100,8 +1118,8 @@
       if (layer.kind === "suit" || layer.kind === "twin") {
         refreshFieldLayer(layer);
       } else if (RASTER_BY_LAYER[layer.id]) {
-        const [metaGlobal, rampName] = RASTER_BY_LAYER[layer.id];
-        const entry = ensureRaster(layer.id, metaGlobal, rampName);
+        const [metaGlobal, rampName, floorPercent] = RASTER_BY_LAYER[layer.id];
+        const entry = ensureRaster(layer.id, metaGlobal, rampName, floorPercent);
         if (entry && entry.url) {
           earthLayers.earth_raster = L.imageOverlay(entry.url, RASTER_BOUNDS, {
             opacity: state.opacity.earth,
@@ -1385,10 +1403,11 @@
       } else if (layer.kind === "raster") {
         const meta = window.RADIUM_PROSPECT_META;
         scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.grade + '"></div>' +
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.scan + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>0</span><span>100</span></div>' +
           (meta ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
-            meta.screenedCells.toLocaleString() + " land cells ? below 65 not drawn</p>" : "");
+            meta.screenedCells.toLocaleString() + " land cells screened ? bright zones are where new " +
+            "candidates cluster. Switch the shortlist to Discovered to see the 39 picks.</p>" : "");
       }
     }
 
