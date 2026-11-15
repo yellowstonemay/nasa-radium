@@ -100,6 +100,16 @@
     }, {});
   }
 
+  const GATE_FLOOR = 0.45;
+
+  /* How much of its rubric score a place keeps, given its candidate fit (0-100).
+     One formula, used by the click grade and by the grade field on the map, so
+     the two can never disagree about the same coordinate. */
+  function gateFactor(fit) {
+    if (fit == null) return 1;
+    return GATE_FLOOR + (1 - GATE_FLOOR) * (clamp(fit, 0, 100) / 100);
+  }
+
   /* Rows whose dimension is not defined on a body (land use on the Moon, for
      example) drop out of the weighted mean and the weights renormalise, so the
      letters stay comparable within a body. */
@@ -119,7 +129,7 @@
     // comfortable it is: its grade is scaled by how far it sits inside the
     // envelope. Shortlist sites carry no candidateFit, so their grades are
     // untouched - they already passed.
-    const value = site.candidateFit == null ? base : base * (0.45 + 0.55 * clamp(site.candidateFit, 0, 100) / 100);
+    const value = base * gateFactor(site.candidateFit);
     return { value, letter: grade(value), dims, base, gate: base ? value / base : 1 };
   }
 
@@ -258,6 +268,7 @@
     DEFAULT_WEIGHTS,
     buildSites,
     withDims,
+    gateFactor,
     scoreSite,
     similarity,
     topTwins,

@@ -229,7 +229,7 @@
             {
               id: "earth_suit",
               label: "Analog grade field",
-              note: "Weighted analog score interpolated from the 40 sites; follows the mission designer.",
+              note: "What a click here would grade: interpolated site score after the analog-screen gate, so it follows the mission designer.",
               kind: "suit"
             },
             {
@@ -1186,7 +1186,7 @@
   const RASTER_BOUNDS = [[-MERC_LAT, -180], [MERC_LAT, 180]];
   const FIELD_W = 1440;
   const FIELD_H = 1440;
-  const FIELD_MASK_KM = 1300;
+  const FIELD_MASK_KM = 1700;
 
   function mercatorRowToLat(row, height) {
     const y = (1 - (2 * row) / height) * Math.PI;
@@ -1273,7 +1273,7 @@
 
   /* Inverse-distance interpolation, faded out with distance to the nearest real
      site so the layer never invents a value in the middle of an empty ocean. */
-  function buildFieldCanvas(points, lo, hi) {
+  function buildFieldCanvas(points, lo, hi, gate) {
     const span = Math.max(1e-6, hi - lo);
     // Interpolate at half resolution (the field is smooth) and scale up with
     // smoothing: 4x cheaper and visually identical.
@@ -1306,13 +1306,20 @@
           data[idx + 3] = 0;
           continue;
         }
-        const t = Math.min(1, Math.max(0, (vSum / wSum - lo) / span));
+        // The field is a preview of what a click here would say, so it carries
+        // the same candidate gate: an interpolated B in a cell the screen never
+        // accepted is not a B.
+        const factor = gate ? gate(lat, lon) : 1;
+        const gated = (vSum / wSum) * (factor == null ? 1 : factor);
+        const t = Math.min(1, Math.max(0, (gated - lo) / span));
         const rgb = rampAt("grade", t);
-        const fade = Math.min(1, Math.max(0, (FIELD_MASK_KM - nearest) / 450));
+        const fade = Math.min(1, Math.max(0, (FIELD_MASK_KM - nearest) / 600));
         data[idx] = rgb[0];
         data[idx + 1] = rgb[1];
         data[idx + 2] = rgb[2];
-        data[idx + 3] = Math.round(fade * (52 + 168 * Math.pow(t, 0.95)));
+        // A floor keeps low-scoring ground visibly violet instead of invisible,
+        // so the field reads as a map of the whole region, not just the halos.
+        data[idx + 3] = Math.round(fade * (105 + 120 * Math.pow(t, 0.8)));
       }
     }
     smallCtx.putImageData(image, 0, 0);
@@ -1427,7 +1434,11 @@
   }
 
   function prospectScoreAt(lat, lon) {
-    const value = valueAtRaster("earth_prospect", lat, lon, 0, 100);
+    // Reads the sampling copy, which is preloaded with the point-grade rasters:
+    // the colourised layer only exists once someone opens that layer.
+    const entry = ensureSampleRaster("sample_prospect", "RADIUM_PROSPECT_META");
+    if (!entry || !entry.scores) return null;
+    const value = valueAtRaster("sample_prospect", lat, lon, 0, 100);
     return value == null ? null : Math.round(value * 10) / 10;
   }
 
@@ -1475,6 +1486,12 @@
       entry.scores = scores;
       if (state.earthPoint) {
         gradeEarthPoint(state.earthPoint.lat, state.earthPoint.lon, { keepCamera: true });
+      }
+      // The grade field shades by the same gate, so redraw it once the screen
+      // raster is readable.
+      if (id === "sample_prospect" && state.body === "earth") {
+        const layer = currentDataLayer();
+        if (layer && layer.kind === "suit") refreshFieldLayer(layer);
       }
     };
     image.src = meta.file;
@@ -1527,6 +1544,17 @@
   function candidateFit(screenScore) {
     if (screenScore == null) return 0;
     return Math.max(0, Math.min(100, (screenScore / CANDIDATE_THRESHOLD) * 100));
+  }
+
+  /* The same gate the click grade uses, evaluated on the map for the field
+     preview. Reading the shipped screen raster means the shading and the dossier
+     answer with one formula. */
+  function fieldGate(lat, lon) {
+    const entry = rasterCache["sample_prospect"];
+    if (!entry || !entry.scores) return null;
+    const screen = valueAtRaster("sample_prospect", lat, lon, 0, 100);
+    if (screen == null) return null;
+    return R.gateFactor(candidateFit(screen));
   }
 
   /* Nearest measured points answer two different questions, so they use two
@@ -1658,6 +1686,8 @@
      lazily instead of delaying the first paint. */
   function preloadPointRasters() {
     Object.values(POINT_RASTERS).forEach(([id, metaGlobal]) => ensureSampleRaster(id, metaGlobal));
+    // The grade field previews the click grade, so it needs the screen raster too.
+    ensureSampleRaster("sample_prospect", "RADIUM_PROSPECT_META");
   }
 
   function currentDataLayer() {
@@ -1669,7 +1699,7 @@
     if (!earthMap) return;
     const field = fieldPoints(layer.kind);
     if (!field) return;
-    const url = buildFieldCanvas(field.points, field.lo, field.hi);
+    const url = buildFieldCanvas(field.points, field.lo, field.hi, layer.kind === "suit" ? fieldGate : null);
     if (earthLayers.earth_field) earthMap.removeLayer(earthLayers.earth_field);
     earthLayers.earth_field = L.imageOverlay(url, RASTER_BOUNDS, {
       opacity: state.opacity.earth,

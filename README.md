@@ -370,6 +370,14 @@ changes the weights, so every re-grade is explainable.
 
 **Candidate gate.** A clicked point is not a shortlisted site, and the screen is what separates the two — so a point's letter is scaled by how far inside the analog envelope it sits: `score × (0.45 + 0.55 × min(1, fit / 65))`. Below the 65-point threshold the multiplier falls off, reaching 0.45 at zero fit; at or above it the multiplier is exactly 1, so a passing cell is graded on its merits and the shortlist is never re-ranked by this. Without it a click in Manhattan graded **C 58.6** while discovered candidates sat at 53-65 — a flat, sunny, well-connected lowland outranking places the screen had actually selected. With it Manhattan is **F 28.9**, London **D 49.3** and Paris **D 48.3**, all below every discovered candidate, while a Saharan cell inside the envelope still grades **B 62.6** and is flagged "screened candidate". Shortlist sites carry no `candidateFit`, so their grades are byte-identical to before the gate existed.
 
+**The grade field and the click grade are the same number.** The analog grade field is an
+interpolation of the shortlist's scores, and it used to ignore the gate — so it painted B and C over
+ground where a click graded F (the Andean valleys behind Sucre, for one). Both paths now run the same
+`gateFactor()`: the field reads the screen raster, applies the gate to each interpolated value before
+colouring, and falls back to the ungated interpolation only where the screen has no data. The field is
+therefore a preview of what a click would grade, and the two never disagree — Sucre reads **E 43.7**
+under a dark violet wash, a Saharan cell reads **B 62.0** under green.
+
 **Open land** comes from `tools/build_land_use.py`: MODIS Combined IGBP Land Cover (500 m, annual) is
 pulled from NASA GIBS as colour-decoded WMTS tiles, binned to the same 0.25° grid by area share, and
 scored barren 100 → built-up 0 (grassland 92, shrub 88, savanna 82, forest 44-58, cropland 32,
