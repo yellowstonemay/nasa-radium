@@ -38,7 +38,7 @@
     },
     earth: {
       label: "Earth", title: "Terrestrial analog candidates", note:
-        "Climate and terrain for every Earth pin are computed from NASA POWER + NOAA ETOPO1. Grades use the same eight-row rubric, so science- and habitability-rich analogs can outrank sites that are merely easy to land on. Click any point on the map to grade that coordinate too.",
+        "Climate and terrain for every Earth pin are computed from NASA POWER + NOAA ETOPO1, and land use comes from MODIS land cover, so a city cannot outrank a desert. Grades use the same rubric as the other bodies plus an open-land row. Click any point on the map to grade that coordinate too.",
       center: { lat: 12, lng: 15 }
     }
   };
@@ -96,7 +96,13 @@
               id: "earth_elev",
               label: "Elevation",
               note: "RADIUM grid, 28 km cells, mean elevation from AWS terrain tiles.",
-              kind: "elev"            }
+              kind: "elev"            },
+            {
+              id: "earth_openland",
+              label: "Open land",
+              note: "How usable the ground is: MODIS land cover scored barren 100 to built-up 0.",
+              kind: "open"
+            }
           ]
         },
         {
@@ -1282,7 +1288,9 @@
     tempMinC: ["earth_tmin", "RADIUM_GRID_EARTH_TMIN"],
     precipMmDay: ["earth_precip", "RADIUM_GRID_EARTH_PRECIP"],
     slopeDeg: ["earth_slope", "RADIUM_GRID_EARTH_SLOPE"],
-    roughnessM: ["earth_relief", "RADIUM_GRID_EARTH_RELIEF"]
+    roughnessM: ["earth_relief", "RADIUM_GRID_EARTH_RELIEF"],
+    landUse: ["earth_open", "RADIUM_GRID_EARTH_OPEN"],
+    landClass: ["earth_cover", "RADIUM_GRID_EARTH_LANDCOVER"]
   };
 
   /* Sampling-only loader: draws the PNG once and keeps the raw bytes, with no
@@ -1378,7 +1386,7 @@
 
     // Oceans, ice sheets and permanent water carry no data byte, so there is
     // nothing honest to grade; say so instead of inventing a letter.
-    if (measured.elevationM == null || measured.tempMeanC == null) {
+    if (measured.elevationM == null || measured.tempMeanC == null || measured.landUse == null) {
       state.earthPoint = { lat, lon, empty: true, card: null, nearest: nearestCurated };
       state.selected.earth = null;
       $("#stage-title").textContent = "Point grade · " + pointLabel(lat, lon);
@@ -1404,6 +1412,8 @@
       tempDayC: measured.tempMaxC == null ? measured.tempMeanC : measured.tempMaxC,
       tempNightC: measured.tempMinC == null ? measured.tempMeanC : measured.tempMinC,
       precipMmDay: measured.precipMmDay,
+      landUse: measured.landUse,
+      landClass: measured.landClass == null ? null : Math.round(measured.landClass),
       solarKwh: inferred.solarKwh,
       humidityPct: inferred.humidityPct,
       windMs: inferred.windMs,
@@ -1506,7 +1516,8 @@
   const RASTER_BY_LAYER = {
     earth_prospect: ["RADIUM_PROSPECT_META", "scan", 65],
     earth_elev: ["RADIUM_GRID_EARTH_ELEV", "elev", null],
-    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null]
+    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null],
+    earth_openland: ["RADIUM_GRID_EARTH_OPEN", "grade", null]
   };
 
   function applyEarthLayer() {
@@ -1876,6 +1887,10 @@
           '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.heat + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
             fmt(meta.min, 0) + " °C</span><span>" + fmt(meta.max, 0) + " °C</span></div>";
+      } else if (layer.kind === "open") {
+        scale =
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.grade + '"></div>' +
+          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>built-up</span><span>open</span></div>';
       } else if (layer.kind === "raster") {
         const meta = window.RADIUM_PROSPECT_META;
         scale =
@@ -1932,9 +1947,20 @@
       ["Roughness (5-pt)", fmt(s.roughnessM, 0) + " m"],
       ["Solar", fmt(s.solarKwh, 1) + " kWh/m²"],
       ["Humidity", fmt(s.humidityPct, 0) + " %"],
-      ["Precipitation", fmt(s.precipMmDay, 2) + " mm/d"]
+      ["Precipitation", fmt(s.precipMmDay, 2) + " mm/d"],
+      ["Open land", fmt(s.landUse) + " / 100"],
+      ["Land cover", landClassName(s.landClass)]
     ]
   };
+
+  /* IGBP class names are shipped with the land-cover raster so the dossier and
+     the map layer never disagree about what class 12 means. */
+  function landClassName(index) {
+    if (index == null) return "—";
+    const meta = window.RADIUM_GRID_EARTH_LANDCOVER;
+    const label = meta && meta.classes ? meta.classes[String(index)] : null;
+    return label || "class " + index;
+  }
 
   function renderPointDetail(host) {
     const point = state.point;
@@ -2052,6 +2078,8 @@
       tile("Slope", fmt(site.slopeDeg, 1) + "°", false),
       tile("Relief", fmt(site.roughnessM, 0) + " m", false),
       tile("Elevation", fmt(site.elevationM, 0) + " m", false),
+      tile("Open land", fmt(site.landUse) + " / 100", false),
+      tile("Land cover", landClassName(site.landClass), false),
       tile("Solar", fmt(site.solarKwh, 1) + " kWh/m²", true),
       tile("Humidity", fmt(site.humidityPct, 0) + " %", true)
     ].join("");
@@ -2061,6 +2089,7 @@
     const inferredRows = new Set(["resources", "processes", "habitability", "subsurface", "operations", "geology"]);
     const rubric = R.RUBRIC.map((r) => {
       const value = card.dims[r.key];
+      if (value == null) return "";
       const bar = value >= 74 ? "var(--grade-a)" : value >= 54 ? "var(--grade-c)" : "var(--grade-e)";
       return (
         '<div class="flex items-center gap-2">' +
@@ -2107,7 +2136,7 @@
         '<div class="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">' +
           '<p class="eyebrow">How this point was graded</p>' +
           '<p class="mt-1 text-[11px] leading-relaxed text-bone/85">' +
-            "Temperature, precipitation, slope, relief and elevation are read straight from the shipped WorldClim / AWS Terrain rasters at this cell, so they are measurements. " +
+            "Temperature, precipitation, slope, relief, elevation and open land are read straight from the shipped WorldClim, AWS Terrain and MODIS land-cover rasters at this cell, so they are measurements. " +
             "Solar, humidity, wind and pressure are NASA POWER measurements taken at surveyed points, estimated here by inverse distance from the four nearest (" +
             fmt(nearestKm) + " km). Water, dust, science, cave access and biosignature value are team judgements that exist only on catalogued analogs, so they are estimated from the four nearest curated sites (" +
             fmt(curatedKm) + " km). " +
@@ -2424,7 +2453,7 @@
         '<div class="flex h-full min-h-[240px] flex-col items-start justify-center gap-2">' +
         '<p class="eyebrow">No site selected</p>' +
         '<p class="font-display text-2xl">Pick a pin to open its dossier</p>' +
-        '<p class="text-xs leading-relaxed text-muted">Every pin carries a letter grade, eight rubric sub-scores, the raw measurements behind them and a citation.</p>' +
+        '<p class="text-xs leading-relaxed text-muted">Every pin carries a letter grade, the rubric sub-scores, the raw measurements behind them and a citation.</p>' +
         "</div>";
       return;
     }
@@ -2438,6 +2467,7 @@
       : new Set();
     const rubric = R.RUBRIC.map((r) => {
       const value = card.dims[r.key];
+      if (value == null) return ""; // row does not exist on this body (land use on the Moon)
       const color = value >= 74 ? "var(--grade-a)" : value >= 54 ? "var(--grade-c)" : "var(--grade-e)";
       return (
         '<div class="flex items-center gap-2">' +
@@ -2615,10 +2645,11 @@
   function renderWeightControls() {
     $("#weight-controls").innerHTML = R.RUBRIC.map((r) => {
       const value = Math.round((state.weights[r.key] || 0) * 100);
+      const scope = r.key === "landuse" ? ' <span class="text-ice/70">(Earth only)</span>' : "";
       return (
         '<label class="block">' +
           '<span class="flex items-baseline justify-between gap-2 text-[11px]">' +
-            '<span class="text-bone">' + r.label + "</span>" +
+            '<span class="text-bone">' + r.label + scope + "</span>" +
             '<span class="tabular-nums text-muted" data-weight-value="' + r.key + '">' + value + "%</span>" +
           "</span>" +
           '<input type="range" min="0" max="40" step="1" value="' + value + '" data-weight="' + r.key +
@@ -2645,10 +2676,10 @@
 
   const PRESETS = {
     balanced: R.DEFAULT_WEIGHTS,
-    ice: { geology: 0.08, terrain: 0.14, environment: 0.12, resources: 0.34, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.16 },
-    solar: { geology: 0.08, terrain: 0.14, environment: 0.18, resources: 0.10, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.34 },
-    science: { geology: 0.30, terrain: 0.08, environment: 0.06, resources: 0.10, processes: 0.04, habitability: 0.24, subsurface: 0.14, operations: 0.04 },
-    landing: { geology: 0.08, terrain: 0.34, environment: 0.14, resources: 0.08, processes: 0.06, habitability: 0.03, subsurface: 0.03, operations: 0.24 }
+    ice: { geology: 0.08, terrain: 0.14, landuse: 0.08, environment: 0.12, resources: 0.34, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.16 },
+    solar: { geology: 0.08, terrain: 0.14, landuse: 0.08, environment: 0.18, resources: 0.10, processes: 0.06, habitability: 0.05, subsurface: 0.05, operations: 0.34 },
+    science: { geology: 0.30, terrain: 0.08, landuse: 0.06, environment: 0.06, resources: 0.10, processes: 0.04, habitability: 0.24, subsurface: 0.14, operations: 0.04 },
+    landing: { geology: 0.08, terrain: 0.34, landuse: 0.12, environment: 0.14, resources: 0.08, processes: 0.06, habitability: 0.03, subsurface: 0.03, operations: 0.24 }
   };
 
   /* Opacity slider: delegated so the panel can be re-rendered freely. */
@@ -2681,7 +2712,8 @@
       ["High-resolution imagery + boundaries", "Esri World Imagery and World Boundaries and Places", "https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9"],
       ["LROC mosaic with polar fill", "NASA SVS LROC colour poles, blended with the LRO WAC mosaic", "https://svs.gsfc.nasa.gov/4720"],
       ["AWS Terrain Tiles (Mapzen terrarium)", "SRTM / NED / GMTED / ETOPO blend; elevation, slope and relief for the global scan", "https://registry.opendata.aws/terrain-tiles/"],
-      ["WorldClim 2.1 bio (10 arc-minute)", "Mean/max/min temperature and precipitation for the global scan", "https://www.worldclim.org/data/worldclim21.html"],
+      ["WorldClim 2.1 bio (10 arc-minute)", "Mean/max/min temperature and precipitation for the global scan and the point grade", "https://www.worldclim.org/data/worldclim21.html"],
+      ["MODIS IGBP land cover (annual, 500 m)", "Open-land score and land cover class: barren 100 to built-up 0, area-share binned to 0.25 degrees via NASA GIBS", "https://earthdata.nasa.gov/gibs"],
       ["Natural Earth 50m land, glaciers, lakes, countries", "Screening masks and candidate country labels", "https://www.naturalearthdata.com/"],
       ["Natural Earth 10m populated places", "Nearest settlement used to name each discovered candidate", "https://www.naturalearthdata.com/downloads/10m-cultural-vectors/"]
     ];
@@ -2694,7 +2726,7 @@
         "<li><strong class=\"text-bone\">Compiled estimates</strong> — Moon/Mars site metrics (and the ice/dust/subsurface indices) are literature-derived with a confidence tag and a citation on each dossier.</li>" +
         "<li><strong class=\"text-bone\">Screening output</strong> — the Discovered shortlist comes from scoring 224,663 quarter-degree land cells against the measured envelope of the curated analogs (<code>tools/build_prospect_scan.py</code>). Climate and terrain are measured; ice, dust, subsurface, biosignature and science rows are proxies, and the site is a proposal to survey.</li>" +
       "</ol>" +
-      '<p class="mt-3 text-[12px] leading-relaxed text-muted">Scoring is deliberately explainable: each of the eight rubric rows is a closed-form function of a measurement (see <code>assets/scoring.js</code>), and the mission designer only changes the weights.</p>' +
+      '<p class="mt-3 text-[12px] leading-relaxed text-muted">Scoring is deliberately explainable: each rubric row is a closed-form function of a measurement (see <code>assets/scoring.js</code>), and the mission designer only changes the weights. The <strong class="text-bone">open land</strong> row exists only on Earth - the Moon and Mars have no owners, farms or cities - so those bodies are still graded on eight rows.</p>' +
       '<table class="mt-4 w-full text-left text-[12px]"><thead><tr class="text-[10px] uppercase tracking-wider text-muted">' +
         "<th class=\"pb-1\">Dataset</th><th class=\"pb-1\">Product</th><th class=\"pb-1\"></th></tr></thead><tbody>" +
         dataRows.map((r) =>

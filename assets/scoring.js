@@ -13,6 +13,7 @@
   const RUBRIC = [
     { key: "geology", label: "Geology & materials", short: "Geology" },
     { key: "terrain", label: "Terrain & topography", short: "Terrain" },
+    { key: "landuse", label: "Open land & land use", short: "Land" },
     { key: "environment", label: "Temperature & illumination", short: "Thermal" },
     { key: "resources", label: "Water, ice & resources", short: "Water" },
     { key: "processes", label: "Dust, wind & surface processes", short: "Dust" },
@@ -24,6 +25,7 @@
   const DEFAULT_WEIGHTS = {
     geology: 0.12,
     terrain: 0.16,
+    landuse: 0.09,
     environment: 0.14,
     resources: 0.16,
     processes: 0.08,
@@ -67,6 +69,10 @@
     return {
       geology: clamp(s.scienceScore),
       terrain: clamp(100 - s.slopeDeg * 3 - roughIndex(s.roughnessM) * 4),
+      // Land use only exists on Earth: the Moon and Mars have no owners,
+      // cropland or cities. Returning null keeps those two bodies on exactly
+      // the eight rows they were graded on before.
+      landuse: body === "earth" ? clamp(s.landUse == null ? 100 : s.landUse) : null,
       environment: envScore(body, s),
       resources: clamp(s.iceIndex * iceReach),
       processes: clamp(100 - s.dustIndex * 0.75),
@@ -94,10 +100,21 @@
     }, {});
   }
 
+  /* Rows whose dimension is not defined on a body (land use on the Moon, for
+     example) drop out of the weighted mean and the weights renormalise, so the
+     letters stay comparable within a body. */
   function scoreSite(site, weights) {
     const w = normalizeWeights(weights || DEFAULT_WEIGHTS);
     const dims = site.dims;
-    const value = RUBRIC.reduce((sum, r) => sum + dims[r.key] * w[r.key], 0);
+    let weighted = 0;
+    let total = 0;
+    RUBRIC.forEach((r) => {
+      const value = dims[r.key];
+      if (value == null || !Number.isFinite(value)) return;
+      weighted += value * w[r.key];
+      total += w[r.key];
+    });
+    const value = total ? weighted / total : 0;
     return { value, letter: grade(value), dims };
   }
 
@@ -145,10 +162,12 @@
     );
 
     const metrics = window.RADIUM_EARTH || {};
+    const landuse = window.RADIUM_EARTH_LANDUSE || {};
     const earth = (window.RADIUM_EARTH_SITES || [])
       .map((curated) => {
         const m = metrics[curated.id];
         if (!m) return null;
+        const land = landuse[curated.id] || {};
         return withDims(
           "earth",
           Object.assign({}, curated, {
@@ -157,6 +176,8 @@
             elevationM: m.elevationM,
             slopeDeg: m.slopeDeg || 0,
             roughnessM: m.roughnessM || 0,
+            landUse: land.open,
+            landClass: land.class,
             tempDayC: m.tempMaxC,
             tempNightC: m.tempMinC,
             tempMeanC: m.tempMeanC,
@@ -184,10 +205,13 @@
      `prospect` and `estimated` mark which fields are proxies rather than
      published observations. */
   function buildProspects() {
+    const landuse = window.RADIUM_EARTH_LANDUSE || {};
     return (window.RADIUM_PROSPECT_SITES || []).map((p) =>
       withDims(
         "earth",
         Object.assign({}, p, {
+          landUse: (landuse[p.id] || {}).open,
+          landClass: (landuse[p.id] || {}).class,
           tempDayC: p.tempMaxC,
           tempNightC: p.tempMinC,
           pressurePa: (p.pressureKPa || 0) * 1000,

@@ -14,12 +14,14 @@ await load("data/mars-sites.js", "RADIUM_MARS");
 await load("data/earth-sites.js", "RADIUM_EARTH_SITES");
 const earthMetrics = await load("earth-metrics.js", "RADIUM_EARTH");
 const prospects = await load("data/prospect-sites.js", "RADIUM_PROSPECT_SITES");
+const landuse = await load("data/earth-landuse.js", "RADIUM_EARTH_LANDUSE");
 
 const scoringSource = await readFile(new URL("../assets/scoring.js", import.meta.url), "utf8");
 const sandbox = { window: { RADIUM_MOON: await load("data/moon-sites.js", "RADIUM_MOON"),
   RADIUM_MARS: await load("data/mars-sites.js", "RADIUM_MARS"),
   RADIUM_EARTH_SITES: await load("data/earth-sites.js", "RADIUM_EARTH_SITES"),
   RADIUM_EARTH: earthMetrics,
+  RADIUM_EARTH_LANDUSE: landuse,
   RADIUM_PROSPECT_SITES: prospects } };
 new Function("window", scoringSource)(sandbox.window);
 
@@ -33,9 +35,18 @@ for (const body of ["moon", "mars", "earth", "discovered"]) {
     if (!site.source || !site.source.url) problems.push(`${site.id}: missing source`);
     if (!Number.isFinite(site.lat) || !Number.isFinite(site.lon)) problems.push(`${site.id}: bad coordinates`);
     for (const [key, value] of Object.entries(site.dims)) {
+      // Land use is an Earth-only row; the other bodies carry null on purpose.
+      if (key === "landuse" && body !== "earth" && body !== "discovered") {
+        if (value !== null) problems.push(`${site.id}: land use should not exist off Earth`);
+        continue;
+      }
       if (!Number.isFinite(value) || value < 0 || value > 100) {
         problems.push(`${site.id}: dim "${key}" = ${value}`);
       }
+    }
+    if (body === "earth" || body === "discovered") {
+      if (!Number.isFinite(site.landUse)) problems.push(`${site.id}: no land-use value`);
+      if (site.landUse === 0) problems.push(`${site.id}: sits on built-up land`);
     }
     const card = scoreSite(site, DEFAULT_WEIGHTS);
     if (!Number.isFinite(card.value) || card.value < 0 || card.value > 100) {
@@ -158,7 +169,9 @@ const earthFields = {
   "earth-tmin-meta.js": ["RADIUM_GRID_EARTH_TMIN", -60, 30],
   "earth-precip-meta.js": ["RADIUM_GRID_EARTH_PRECIP", 0, 12],
   "earth-slope-meta.js": ["RADIUM_GRID_EARTH_SLOPE", 0, 40],
-  "earth-relief-meta.js": ["RADIUM_GRID_EARTH_RELIEF", 0, 1200]
+  "earth-relief-meta.js": ["RADIUM_GRID_EARTH_RELIEF", 0, 1200],
+  "earth-open-meta.js": ["RADIUM_GRID_EARTH_OPEN", 0, 100],
+  "earth-landcover-meta.js": ["RADIUM_GRID_EARTH_LANDCOVER", 0, 17]
 };
 for (const [file, [globalName, lo, hi]] of Object.entries(earthFields)) {
   const metaSrc = await readFile(new URL(`../assets/grids/${file}`, import.meta.url), "utf8");

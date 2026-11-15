@@ -11,7 +11,7 @@ query anywhere, plus a graded shortlist on each body:
 | --- | --- |
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier ? 25 lunar sites from the 13 Artemis III regions to far-side science targets, and 24 martian sites from Jezero to the shallow-ice belts |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs, searched across **both** shortlists (40 curated + 39 discovered) |
-| **Grade any point** | click any point on the *Earth* map → that coordinate is graded A–F on the same eight-row rubric, from shipped WorldClim / AWS Terrain rasters, and shows what it resembles on the Moon and Mars |
+| **Grade any point** | click any point on the *Earth* map → that coordinate is graded A–F on the same rubric (plus the Earth-only open-land row), from shipped WorldClim / AWS Terrain / MODIS rasters, and shows what it resembles on the Moon and Mars |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
 | **Earth Twin mode** | any site or clicked point → the map jumps to Earth and ranks its closest matches from both shortlists; discovered hits are tagged `screened` and keep their dashed pin |
@@ -42,6 +42,7 @@ python tools\build_moon_temp_textures.py # renders the day/night temperature glo
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
 python tools\build_prospect_scan.py --rasters-only # terrain/climate rasters used by the Earth point grade
+python tools\build_land_use.py      # MODIS land cover -> open-land + land-cover rasters, per-site values
 ```
 
 Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
@@ -69,7 +70,7 @@ which is which.
 | Earth boundaries | Country borders, place and water labels | Esri World Boundaries and Places |
 | Earth heat map | WorldClim 2.1 `bio_1` annual mean air temperature, 10 arc-minute, land only | [WorldClim](https://www.worldclim.org/data/worldclim21.html) |
 | Earth elevation | **computed** 0.25 degree cell means of the AWS terrain tiles | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) |
-| Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
+| Earth analog grade field | **computed** from the rubric (nine rows on Earth, eight elsewhere), follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
 | Earth prospect scan | **computed** 0.25° global screening of every land cell against the analog envelope | [AWS terrain](https://registry.opendata.aws/terrain-tiles/) · [WorldClim](https://www.worldclim.org/data/worldclim21.html) · [Natural Earth](https://www.naturalearthdata.com/) |
 
@@ -206,6 +207,7 @@ request leaves the browser, so it works with the venue wifi down:
 | Slope, local relief | computed at native DEM resolution, averaged per cell | measured |
 | Mean / max / min temperature | WorldClim 2.1 bio_1 / bio_5 / bio_6 | measured |
 | Precipitation | WorldClim 2.1 bio_12 / 365 | measured |
+| Open land + land cover class | MODIS IGBP land cover (annual, 500 m) via GIBS | measured |
 | Solar, humidity, wind, pressure | inverse distance from the 4 nearest POWER-measured points | **estimated** |
 | Water, dust, science, cave access, biosignature | inverse distance from the 4 nearest *curated* analogs | **estimated** |
 
@@ -215,10 +217,10 @@ on purpose: physical climate is interpolated from any surveyed point, but the qu
 exist as team judgements on the 40 catalogued analogs, so they are interpolated from those alone —
 otherwise a screened candidate's derived "science" score would leak into every nearby click.
 
-The result is the same eight-row rubric and the same A–F letters as the curated sites, plus two
-context numbers: how many of the 40 curated analogs it outranks, and the analog-envelope screen score
-at that cell. Fields and rows that are estimated are marked `*`, and since similarity is symmetric the
-dossier also lists the Moon and Mars sites the spot most resembles.
+The result is the same rubric (nine rows on Earth) and the same A–F letters as the curated sites, plus
+two context numbers: how many of the 40 curated analogs it outranks, and the analog-envelope screen
+score at that cell. Fields and rows that are estimated are marked `*`, and since similarity is
+symmetric the dossier also lists the Moon and Mars sites the spot most resembles.
 
 **Compiled estimates** — the curated Moon/Mars dossiers and the ice/dust/subsurface indices are
 literature-derived regional estimates. Each dossier shows a confidence tag and a citation, and
@@ -326,10 +328,10 @@ and at least 200 km from any curated site — so the output is a spread of genui
 one desert repeated.
 
 Each finalist is then queried with POWER + ETOPO1 for real numbers and graded with **the same
-eight-row rubric** as everything else. The dossier labels the ice, dust, subsurface, biosignature
+nine-row Earth rubric** as everything else. The dossier labels the ice, dust, subsurface, biosignature
 and science rows with `*` because those are proxies derived from climate and terrain, not field
 observations, and says plainly that the site is a proposal to survey. Clicking anywhere on the map
-also reads the shipped screening raster and reports the cell's screen score.
+also reads the shipped rasters and grades that cell.
 
 Current output: **39 candidates in 22 countries**, e.g. 57 km WSW of Yakima (basalt plateau),
 35 km SSW of Zapala (Patagonian steppe), 58 km E of Serdar (Karakum), 116 km ENE of Beaufort West
@@ -338,9 +340,20 @@ Current output: **39 candidates in 22 countries**, e.g. 57 km WSW of Yakima (bas
 ## Scoring
 
 Eight rubric rows (geology, terrain, thermal, water, dust, habitability, subsurface, operations) are
-closed-form functions of the measurements in `assets/scoring.js`. The weighted mean is the
-suitability score; letters map to A ≥ 70, B ≥ 62, C ≥ 54, D ≥ 46, E ≥ 38, otherwise F. The mission
-designer only changes the weights, so every re-grade is explainable.
+closed-form functions of the measurements in `assets/scoring.js`. Earth adds a ninth, **open land**,
+because the Moon and Mars have no owners, farms or cities but Earth very much does: without it a click
+in Manhattan graded as a credible base site. Earth sites and point grades are therefore scored on nine
+rows; the other bodies leave that dimension `null` and the weighted mean renormalises, so every lunar
+and martian score is byte-identical to before this row existed. The weighted mean is the suitability
+score; letters map to A ≥ 70, B ≥ 62, C ≥ 54, D ≥ 46, E ≥ 38, otherwise F. The mission designer only
+changes the weights, so every re-grade is explainable.
+
+**Open land** comes from `tools/build_land_use.py`: MODIS Combined IGBP Land Cover (500 m, annual) is
+pulled from NASA GIBS as colour-decoded WMTS tiles, binned to the same 0.25° grid by area share, and
+scored barren 100 → built-up 0 (grassland 92, shrub 88, savanna 82, forest 44-58, cropland 32,
+wetland 45, ice 96). Water and no-data stay empty rather than scoring, because a lake is not a bad
+base site - it is not a site. The result is two rasters (`earth-open.png`, `earth-landcover.png`) plus
+`assets/data/earth-landuse.js` with each pin's openness and dominant class.
 
 **Two numbers, two questions.** The Discovered tab used to print the *screen* score in the same slot
 where every other tab prints the *grade* score, so a 99 could sit next to a `C` badge while a 66
