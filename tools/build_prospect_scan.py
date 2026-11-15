@@ -26,6 +26,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import sys
 import re
 import time
 import urllib.request
@@ -605,6 +606,64 @@ def load_places():
     }
 
 # ------------------------------------------------------------------ output
+def encode_raster(values: np.ndarray, valid: np.ndarray, lo: float, hi: float,
+                  name: str, meta_extra: dict) -> None:
+    """Write a masked 8-bit raster where 0 means 'no data' and 1..255 is the value."""
+    scaled = np.zeros((H, W), dtype=np.uint8)
+    normalised = np.clip((values[valid] - lo) / (hi - lo), 0.0, 1.0)
+    scaled[valid] = np.clip(np.round(normalised * 254.0) + 1.0, 1, 255).astype(np.uint8)
+    Image.fromarray(scaled, mode="L").save(GRIDS / f"{name}.png", optimize=True)
+    meta = {
+        "file": f"assets/grids/{name}.png",
+        "width": W,
+        "height": H,
+        "bounds": [[-90, -180], [90, 180]],
+        "min": lo,
+        "max": hi,
+        "cells": int(valid.sum()),
+    }
+    meta.update(meta_extra)
+    body = "window." + meta_extra["global"] + " = " + json.dumps(meta, indent=2) + ";\n"
+    (GRIDS / f"{name}-meta.js").write_text(body, encoding="utf-8")
+    print(f"wrote {name}.png ({int(valid.sum())} cells)")
+
+
+def write_elevation(layers: dict[str, np.ndarray], ok: np.ndarray) -> None:
+    """Ship the DEM the screen uses as a colourisable elevation raster."""
+    elev = layers["elev"]
+    valid = ok & np.isfinite(elev)
+    lo, hi = -400.0, 6000.0
+    scaled = np.zeros((H, W), dtype=np.uint8)
+    normalised = np.clip((elev[valid] - lo) / (hi - lo), 0.0, 1.0)
+    scaled[valid] = np.clip(np.round(normalised * 254.0) + 1.0, 1, 255).astype(np.uint8)
+    Image.fromarray(scaled, mode="L").save(GRIDS / "earth-elev.png", optimize=True)
+    meta = {
+        "file": "assets/grids/earth-elev.png",
+        "width": W,
+        "height": H,
+        "bounds": [[-90, -180], [90, 180]],
+        "minM": lo,
+        "maxM": hi,
+        "screenedCells": int(valid.sum()),
+        "source": "AWS Terrain Tiles (Mapzen terrarium, SRTM/NED/GMTED/ETOPO blend), 0.25 degree cell means",
+        "url": "https://registry.opendata.aws/terrain-tiles/"
+    }
+    body = "window.RADIUM_GRID_EARTH_ELEV = " + json.dumps(meta, indent=2) + ";\n"
+    (GRIDS / "earth-elev-meta.js").write_text(body, encoding="utf-8")
+    print(f"wrote earth-elev.png ({int(valid.sum())} cells)")
+
+    # WorldClim annual mean temperature is global and complete, so it makes a far
+    # better heat map than interpolating blobs around 40 stations.
+    heat = layers["tempMeanC"]
+    heat_ok = ok & np.isfinite(heat)
+    encode_raster(heat, heat_ok, -25.0, 32.0, "earth-heat", {
+        "global": "RADIUM_GRID_EARTH_HEAT",
+        "units": "degC",
+        "source": "WorldClim 2.1 bio_1 (annual mean air temperature), 10 arc-minute, 1970-2000",
+        "url": "https://www.worldclim.org/data/worldclim21.html",
+    })
+
+
 def write_field(score: np.ndarray, ok: np.ndarray, envelope: dict[str, dict]) -> None:
     """Encode the screening score as a grayscale raster: 0 means 'not screened'."""
     GRIDS.mkdir(parents=True, exist_ok=True)
@@ -776,14 +835,12 @@ def refine(cells, places, countries, known, screened_cells) -> list[dict]:
     return sites
 
 
-def main() -> int:
+def build_layers() -> dict[str, np.ndarray]:
     print("loading global datasets")
     dem = load_dem()
     terrain = terrain_grids(dem)
     climate = load_worldclim()
-    land = land_mask()
-
-    layers = {
+    return {
         "elev": terrain["elev"],
         "slope": terrain["slope"],
         "relief": terrain["relief"],
@@ -792,10 +849,18 @@ def main() -> int:
         "tempMinC": climate["tempMinC"],
         "precipMmDay": climate["precipMmDay"],
         "precipSeasonality": climate["precipSeasonality"],
-        "land": land,
+        "land": land_mask(),
         "glacier": rasterize(NE_GLACIATED, "ne_50m_glaciated_areas.geojson"),
         "lake": rasterize(NE_LAKES, "ne_50m_lakes.geojson"),
     }
+
+
+def main(argv: list[str]) -> int:
+    layers = build_layers()
+    ok = masks(layers)
+    if "--rasters-only" in argv:
+        write_elevation(layers, ok)
+        return 0
 
     metrics = curated_metrics()
     # earth-sites.js is hand-written JavaScript, so read the display names with a
@@ -809,7 +874,6 @@ def main() -> int:
 
     envelope = build_envelope(layers, known)
     score = score_field(layers, envelope)
-    ok = masks(layers)
     print(f"  screened {int((ok & np.isfinite(score)).sum())} land cells")
 
     countries = geojson(NE_COUNTRIES, "ne_50m_admin_0_countries.geojson")
@@ -817,6 +881,7 @@ def main() -> int:
     print(f"  {len(cells)} candidates pass the spacing rules")
 
     write_field(score, ok, envelope)
+    write_elevation(layers, ok)
     places = load_places()
     sites = refine(cells, places, countries, known, int((ok & np.isfinite(score)).sum()))
     write_sites(sites)
@@ -824,4 +889,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

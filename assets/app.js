@@ -62,57 +62,96 @@
         id: "moon_day",
         label: "Day temperature",
         legend:
-          "Modelled day-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (?8 K), ramp -65 to 110 ?C"
+          "Modelled day-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (±8 K), ramp −65 to 110 °C"
       },
       {
         id: "moon_night",
         label: "Night temperature",
         legend:
-          "Modelled night-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (?12 K), ramp -200 to -150 ?C"
+          "Modelled night-side temperature over the LRO mosaic: isotonic latitude fit to Diviner site climatology (±12 K), ramp −200 to −150 °C"
       }
     ],
     mars: [
       { id: "mars_base", label: "MOLA relief", legend: "MOLA colour-shaded elevation (km)" },
       { id: "mars_visible", label: "Viking colour", legend: "Viking MDIM 2.1 colour mosaic" }
     ],
-    earth: [
-      {
-        id: "earth_base",
-        label: "Satellite",
-        legend: "High-resolution imagery (Esri World Imagery) over a cached Blue Marble base — zoom to 17 to locate a pin exactly",
-        kind: "base"
-      },
-      {
-        id: "earth_temp",
-        label: "Surface temp",
-        legend: "Interpolated mean air temperature, NASA POWER 2001-2020 (real measurements at 40 sites; faded beyond 2,500 km)",
-        kind: "temp"
-      },
-      {
-        id: "earth_suit",
-        label: "Analog grade field",
-        legend: "Weighted analog score interpolated from the 40 shortlisted sites — reacts to the mission designer",
-        kind: "suit"
-      },
-      {
-        id: "earth_twin",
-        label: "Twin similarity",
-        legend: "Similarity to the selected Moon/Mars target, interpolated across Earth",
-        kind: "twin"
-      },
-      {
-        id: "earth_prospect",
-        label: "Prospect scan",
-        legend:
-          "Global screening: every quarter-degree land cell scored against the measured envelope of the 40 catalogued analogs (AWS terrain tiles + WorldClim 2.1). Switch the shortlist to Discovered to see the candidates this found.",
-        kind: "raster"
-      }
-    ]
+    earth: {
+      /* One base imagery choice, one data layer on top of it. */
+      base: [
+        {
+          id: "earth_s2",
+          label: "Sentinel-2 cloudless",
+          note: "Cloud-free Sentinel-2 true colour, about 10 m.",
+          glyph: "◎"
+        },
+        {
+          id: "earth_bm",
+          label: "Blue Marble",
+          note: "NASA composite with shaded relief and bathymetry, 500 m.",
+          glyph: "●"
+        },
+        {
+          id: "earth_base",
+          label: "Esri World Imagery",
+          note: "Sharp to zoom 17, so a pin lands exactly.",
+          glyph: "▣"
+        }
+      ],
+      data: [
+        {
+          group: "Terrain",
+          items: [
+            {
+              id: "earth_elev",
+              label: "Elevation",
+              note: "RADIUM grid, 28 km cells, mean elevation from AWS terrain tiles.",
+              kind: "elev"            }
+          ]
+        },
+        {
+          group: "Analysis",
+          items: [
+            {
+              id: "earth_suit",
+              label: "Analog grade field",
+              note: "Weighted analog score interpolated from the 40 sites; follows the mission designer.",
+              kind: "suit"
+            },
+            {
+              id: "earth_temp",
+              label: "Heat map",
+              note: "Annual mean air temperature, WorldClim 2.1. Cold is violet, hot is amber.",
+              kind: "temp"
+            },
+            {
+              id: "earth_twin",
+              label: "Twin similarity",
+              note: "Similarity to the selected Moon or Mars target.",
+              kind: "twin"
+            }
+          ]
+        },
+        {
+          group: "Screening",
+          items: [
+            {
+              id: "earth_prospect",
+              label: "Prospect scan",
+              note: "Quarter-degree cells scored against the analog envelope.",
+              kind: "raster"
+            }
+          ]
+        }
+      ]
+    }
   };
 
   const state = {
     body: "moon",
-    layer: { moon: "moon_surface", mars: "mars_base", earth: "earth_base" },
+    layer: { moon: "moon_surface", mars: "mars_base", earth: "earth_suit" },
+    base: { earth: "earth_s2" },
+    opacity: { earth: 0.78 },
+    panelOpen: true,
     selected: { moon: null, mars: null, earth: null },
     weights: Object.assign({}, R.DEFAULT_WEIGHTS),
     twinSource: null,
@@ -715,26 +754,37 @@
       pane: "fallbackPane"
     });
 
-    // High-resolution real imagery on top of the cached Blue Marble, so zooming
-    // in reveals actual terrain instead of upscaled pixels. If the tiles cannot
-    // load (offline venue), the cached base below still shows the site.
+    // Base imagery: the cached Blue Marble sits underneath every option so an
+    // offline venue still shows something. Sentinel-2 cloudless is the default.
+    const s2 = L.tileLayer(
+      "https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2020_3857/default/g/{z}/{y}/{x}.jpg",
+      {
+        opacity: 1,
+        maxNativeZoom: 14,
+        maxZoom: 17,
+        tileSize: 256,
+        attribution: "Sentinel-2 cloudless © EOX IT Services (CC BY 4.0)"
+      }
+    );
+    const blueMarble = L.tileLayer(
+      "https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/BlueMarble_ShadedRelief_Bathymetry/default/GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg",
+      { opacity: 1, maxNativeZoom: 8, maxZoom: 17, tileSize: 256, attribution: "NASA GIBS Blue Marble" }
+    );
     const highRes = L.tileLayer(
       "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
       { opacity: 1, maxNativeZoom: 17, maxZoom: 17, tileSize: 256, attribution: "Imagery © Esri, Maxar, Earthstar Geographics" }
     );
 
-    earthLayers.earth_base = L.layerGroup([offlineBase, highRes]);
+    earthLayers.base = {
+      earth_s2: L.layerGroup([offlineBase, s2]),
+      earth_bm: L.layerGroup([offlineBase, blueMarble]),
+      earth_base: L.layerGroup([offlineBase, highRes])
+    };
 
     earthLayers.earth_labels = L.tileLayer(
       "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
       { opacity: 1, maxNativeZoom: 17, maxZoom: 17, tileSize: 256, pane: "labelsPane" }
     );
-
-    earthLayers.earth_temp = L.imageOverlay("assets/grids/earth-temp.png", [[-90, -180], [90, 180]], {
-      opacity: 0.92,
-      interactive: false,
-      pane: "fieldPane"
-    });
 
     earthMap.on("zoomend", () => {
       renderEarthMarkers();
@@ -769,23 +819,52 @@
   }
 
   /* ------------------------------------------- computed Earth field layers */
-  const FIELD_W = 720;
-  const FIELD_H = 360;
-  const FIELD_MASK_KM = 2200;
+  const FIELD_W = 1440;
+  const FIELD_H = 720;
+  const FIELD_MASK_KM = 1300;
 
-  const FIELD_RAMP = [
-    [0.0, [9, 22, 66]],
-    [0.3, [30, 96, 152]],
-    [0.52, [56, 186, 168]],
-    [0.74, [233, 178, 68]],
-    [1.0, [247, 219, 172]]
-  ];
+  /* One ramp family for the whole map: violet where a value is low or missing,
+     teal and lime through the middle, amber at the top. Matches the layer design
+     so the three data layers are recognisably the same instrument. */
+  const RAMPS = {
+    grade: [
+      [0.0, [22, 9, 44]],
+      [0.55, [58, 19, 89]],
+      [0.72, [31, 122, 107]],
+      [0.88, [142, 201, 62]],
+      [1.0, [247, 243, 160]]
+    ],
+    heat: [
+      [0.0, [27, 11, 51]],
+      [0.25, [74, 26, 107]],
+      [0.45, [140, 43, 143]],
+      [0.62, [194, 69, 107]],
+      [0.78, [224, 138, 60]],
+      [0.92, [242, 207, 74]],
+      [1.0, [253, 246, 207]]
+    ],
+    elev: [
+      [0.0, [14, 32, 66]],
+      [0.25, [28, 88, 110]],
+      [0.5, [64, 146, 98]],
+      [0.72, [178, 154, 86]],
+      [0.9, [216, 195, 152]],
+      [1.0, [248, 244, 236]]
+    ]
+  };
 
-  function rampAt(t) {
+  const RAMP_CSS = {
+    grade: "linear-gradient(90deg,#16092c,#3a1359,#1f7a6b,#8ec93e,#f7f3a0)",
+    heat: "linear-gradient(90deg,#1b0b33,#4a1a6b,#8c2b8f,#c2456b,#e08a3c,#f2cf4a,#fdf6cf)",
+    elev: "linear-gradient(90deg,#0e2042,#1c586e,#409262,#b29a56,#d8c398,#f8f4ec)"
+  };
+
+  function rampAt(name, t) {
+    const ramp = RAMPS[name] || RAMPS.grade;
     const v = Math.min(1, Math.max(0, t));
-    for (let i = 0; i < FIELD_RAMP.length - 1; i += 1) {
-      const [p0, c0] = FIELD_RAMP[i];
-      const [p1, c1] = FIELD_RAMP[i + 1];
+    for (let i = 0; i < ramp.length - 1; i += 1) {
+      const [p0, c0] = ramp[i];
+      const [p1, c1] = ramp[i + 1];
       if (v <= p1) {
         const f = (v - p0) / Math.max(1e-6, p1 - p0);
         return [
@@ -795,7 +874,7 @@
         ];
       }
     }
-    return FIELD_RAMP[FIELD_RAMP.length - 1][1];
+    return ramp[ramp.length - 1][1];
   }
 
   function fieldDistanceKm(lat1, lon1, lat2, lon2) {
@@ -808,8 +887,8 @@
     return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(a)));
   }
 
-  /* Inverse-distance interpolation, masked by distance to the nearest real site
-     so the layer never invents a value in the middle of an empty ocean. */
+  /* Inverse-distance interpolation, faded out with distance to the nearest real
+     site so the layer never invents a value in the middle of an empty ocean. */
   function buildFieldCanvas(points, lo, hi) {
     const span = Math.max(1e-6, hi - lo);
     const canvas = document.createElement("canvas");
@@ -830,7 +909,7 @@
           const p = points[i];
           const d = fieldDistanceKm(lat, lon, p.lat, p.lon);
           if (d < nearest) nearest = d;
-          const w = Math.exp(-(d * d) / (2 * 820 * 820)) + 0.02 / Math.max(d, 200);
+          const w = Math.exp(-(d * d) / (2 * 360 * 360)) + 0.02 / Math.max(d, 200);
           wSum += w;
           vSum += w * p.value;
         }
@@ -839,13 +918,13 @@
           data[idx + 3] = 0;
           continue;
         }
-        const value = vSum / wSum;
-        const rgb = rampAt((value - lo) / span);
-        const fade = Math.min(1, Math.max(0, (FIELD_MASK_KM - nearest) / 600));
+        const t = Math.min(1, Math.max(0, (vSum / wSum - lo) / span));
+        const rgb = rampAt("grade", t);
+        const fade = Math.min(1, Math.max(0, (FIELD_MASK_KM - nearest) / 450));
         data[idx] = rgb[0];
         data[idx + 1] = rgb[1];
         data[idx + 2] = rgb[2];
-        data[idx + 3] = Math.round(fade * 200);
+        data[idx + 3] = Math.round(fade * (20 + 112 * Math.pow(t, 0.9)));
       }
     }
     ctx.putImageData(image, 0, 0);
@@ -875,56 +954,13 @@
     return null;
   }
 
-  function refreshFieldLayer() {
-    if (!earthMap || state.body !== "earth") return;
-    const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
-    if (!active || (active.kind !== "suit" && active.kind !== "twin")) return;
+  /* Shipped rasters are 8-bit with 0 meaning "no data", so they can be
+     colourised on the client with the same ramps the interpolated fields use. */
+  const rasterCache = {};
 
-    const field = fieldPoints(active.kind);
-    if (!field) return;
-    const url = buildFieldCanvas(field.points, field.lo, field.hi);
-    if (earthLayers.earth_field) earthMap.removeLayer(earthLayers.earth_field);
-    earthLayers.earth_field = L.imageOverlay(url, [[-90, -180], [90, 180]], {
-      opacity: 0.88,
-      interactive: false,
-      pane: "fieldPane"
-    }).addTo(earthMap);
-    earthLayers.earth_field.bringToFront();
-    state.fieldRange = { kind: active.kind, lo: field.lo, hi: field.hi };
-    renderLayers();
-  }
-
-  function applyEarthLayer() {
-    if (!earthMap) return;
-    ["earth_temp", "earth_field", "earth_prospect"].forEach((key) => {
-      if (earthLayers[key] && earthMap.hasLayer(earthLayers[key])) earthMap.removeLayer(earthLayers[key]);
-    });
-    earthLayers.earth_base.addTo(earthMap);
-
-    const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
-    if (active) {
-      if (active.kind === "temp") {
-        earthLayers.earth_temp.addTo(earthMap);
-        earthLayers.earth_temp.bringToFront();
-      } else if (active.kind === "raster") {
-        applyProspectLayer();
-      } else if (active.kind === "suit" || active.kind === "twin") {
-        refreshFieldLayer();
-      }
-    }
-    applyLabels();
-    renderEarthMarkers();
-  }
-
-  /* The screening raster ships as a grayscale PNG: the pixel value is the
-     screening score, 0 means "not screened". It is colourised once on the
-     client so it uses the same ramp as the interpolated fields. */
-  const prospectRaster = { url: null, image: null };
-
-  function colouriseProspect(image) {
-    const meta = window.RADIUM_PROSPECT_META;
-    const width = meta ? meta.width : image.width;
-    const height = meta ? meta.height : image.height;
+  function colouriseRaster(entry, image, rampName) {
+    const width = entry.meta.width || image.width;
+    const height = entry.meta.height || image.height;
     const canvas = document.createElement("canvas");
     canvas.width = width;
     canvas.height = height;
@@ -932,7 +968,6 @@
     ctx.drawImage(image, 0, 0, width, height);
     const pixels = ctx.getImageData(0, 0, width, height);
     const data = pixels.data;
-    // Keep the raw score per cell before the pixels are replaced by colours.
     const scores = new Uint8Array(width * height);
     for (let i = 0, p = 0; i < data.length; i += 4, p += 1) {
       const value = data[i];
@@ -942,49 +977,117 @@
         continue;
       }
       const t = (value - 1) / 254;
-      const [r, g, b] = rampAt(t);
-      data[i] = r;
-      data[i + 1] = g;
-      data[i + 2] = b;
-      data[i + 3] = Math.round(20 + 150 * Math.min(1, t * 1.2));
+      const rgb = rampAt(rampName, t);
+      data[i] = rgb[0];
+      data[i + 1] = rgb[1];
+      data[i + 2] = rgb[2];
+      data[i + 3] = Math.round(18 + 128 * Math.pow(t, 0.85));
     }
     ctx.putImageData(pixels, 0, 0);
-    prospectRaster.scores = scores;
-    prospectRaster.width = width;
-    prospectRaster.height = height;
+    entry.scores = scores;
+    entry.width = width;
+    entry.height = height;
     return canvas.toDataURL("image/png");
   }
 
-  /* Screen score at any coordinate, read straight out of the shipped raster so
-     the number always matches what the map is painting. */
-  function prospectScoreAt(lat, lon) {
-    if (!prospectRaster.scores) return null;
-    const col = Math.floor(((lon + 180) / 360) * prospectRaster.width) % prospectRaster.width;
-    const row = Math.floor(((90 - lat) / 180) * prospectRaster.height);
-    if (row < 0 || row >= prospectRaster.height) return null;
-    const value = prospectRaster.scores[row * prospectRaster.width + col];
-    return value ? Math.round(((value - 1) / 254) * 1000) / 10 : null;
-  }
-
-  function loadProspectRaster() {
-    if (prospectRaster.image) return;
+  function ensureRaster(id, metaGlobal, rampName) {
+    const existing = rasterCache[id];
+    if (existing) return existing;
+    const meta = window[metaGlobal];
+    if (!meta) return null;
+    const entry = { meta, url: null, scores: null, width: meta.width, height: meta.height };
+    rasterCache[id] = entry;
     const image = new Image();
     image.onload = () => {
-      prospectRaster.image = image;
-      prospectRaster.url = colouriseProspect(image);
-      if (state.body === "earth" && state.layer.earth === "earth_prospect") applyEarthLayer();
+      entry.url = colouriseRaster(entry, image, rampName);
+      if (state.body === "earth" && state.layer.earth === id) applyEarthLayer();
     };
-    image.src = "assets/grids/earth-prospect.png";
+    image.src = meta.file;
+    return entry;
   }
 
-  function applyProspectLayer() {
-    if (!earthMap || !prospectRaster.url) return;
-    earthLayers.earth_prospect = L.imageOverlay(prospectRaster.url, [[-90, -180], [90, 180]], {
-      opacity: 0.78,
+  function valueAtRaster(id, lat, lon, lo, hi) {
+    const entry = rasterCache[id];
+    if (!entry || !entry.scores) return null;
+    const col = Math.floor(((lon + 180) / 360) * entry.width) % entry.width;
+    const row = Math.floor(((90 - lat) / 180) * entry.height);
+    if (row < 0 || row >= entry.height) return null;
+    const raw = entry.scores[row * entry.width + col];
+    if (!raw) return null;
+    return lo + ((raw - 1) / 254) * (hi - lo);
+  }
+
+  function prospectScoreAt(lat, lon) {
+    const value = valueAtRaster("earth_prospect", lat, lon, 0, 100);
+    return value == null ? null : Math.round(value * 10) / 10;
+  }
+
+  function preloadRasters() {
+    ensureRaster("earth_suit", "RADIUM_PROSPECT_META", "grade");
+    ensureRaster("earth_prospect", "RADIUM_PROSPECT_META", "grade");
+    ensureRaster("earth_elev", "RADIUM_GRID_EARTH_ELEV", "elev");
+    ensureRaster("earth_temp", "RADIUM_GRID_EARTH_HEAT", "heat");
+  }
+
+  function currentDataLayer() {
+    const all = LAYERS.earth.data.reduce((acc, group) => acc.concat(group.items), []);
+    return all.find((item) => item.id === state.layer.earth) || null;
+  }
+
+  function refreshFieldLayer(layer) {
+    if (!earthMap) return;
+    const field = fieldPoints(layer.kind);
+    if (!field) return;
+    const url = buildFieldCanvas(field.points, field.lo, field.hi);
+    if (earthLayers.earth_field) earthMap.removeLayer(earthLayers.earth_field);
+    earthLayers.earth_field = L.imageOverlay(url, [[-90, -180], [90, 180]], {
+      opacity: state.opacity.earth,
       interactive: false,
       pane: "fieldPane"
     }).addTo(earthMap);
-    earthLayers.earth_prospect.bringToFront();
+    earthLayers.earth_field.bringToFront();
+    state.fieldRange = { kind: layer.kind, lo: field.lo, hi: field.hi };
+    renderLegend();
+  }
+
+  const RASTER_BY_LAYER = {
+    earth_prospect: ["RADIUM_PROSPECT_META", "grade", 0, 100],
+    earth_elev: ["RADIUM_GRID_EARTH_ELEV", "elev", null, null],
+    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null, null]
+  };
+
+  function applyEarthLayer() {
+    if (!earthMap) return;
+    ["earth_field", "earth_raster"].forEach((key) => {
+      if (earthLayers[key] && earthMap.hasLayer(earthLayers[key])) earthMap.removeLayer(earthLayers[key]);
+    });
+
+    Object.keys(earthLayers.base || {}).forEach((key) => {
+      if (earthMap.hasLayer(earthLayers.base[key])) earthMap.removeLayer(earthLayers.base[key]);
+    });
+    const baseId = state.base.earth;
+    if (earthLayers.base && earthLayers.base[baseId]) earthLayers.base[baseId].addTo(earthMap);
+
+    const layer = currentDataLayer();
+    if (layer) {
+      if (layer.kind === "suit" || layer.kind === "twin") {
+        refreshFieldLayer(layer);
+      } else if (RASTER_BY_LAYER[layer.id]) {
+        const [metaGlobal, rampName] = RASTER_BY_LAYER[layer.id];
+        const entry = ensureRaster(layer.id, metaGlobal, rampName);
+        if (entry && entry.url) {
+          earthLayers.earth_raster = L.imageOverlay(entry.url, [[-90, -180], [90, 180]], {
+            opacity: state.opacity.earth,
+            interactive: false,
+            pane: "fieldPane"
+          }).addTo(earthMap);
+          earthLayers.earth_raster.bringToFront();
+        }
+      }
+    }
+
+    applyLabels();
+    renderEarthMarkers();
   }
 
   function applyLabels() {
@@ -1087,86 +1190,192 @@
   }
 
   /* -------------------------------------------------------------- layers */
+  const groupState = { base: true, data: true, terrain: true, analysis: true, screening: false, overlays: false };
+
+  const CHEVRON =
+    '<svg class="layer-group__chev" width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">' +
+    '<path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function groupHead(key, label) {
+    return (
+      '<button type="button" class="layer-group__head" data-layer-group="' + key +
+        '" aria-expanded="' + String(groupState[key]) + '">' +
+        CHEVRON + "<span>" + label + "</span>" +
+      "</button>"
+    );
+  }
+
+  function optionRow(kind, item, checked) {
+    const attr = kind === "base" ? "data-layer-base" : "data-layer-data";
+    return (
+      '<button type="button" role="radio" aria-checked="' + String(checked) + '" ' + attr + '="' + item.id + '" ' +
+        'class="layer-option">' +
+        '<span class="layer-option__dot" aria-hidden="true"></span>' +
+        '<span class="min-w-0 flex-1">' +
+          '<span class="layer-option__label">' + item.label +
+            (item.glyph ? '<span class="layer-option__glyph" aria-hidden="true">' + item.glyph + "</span>" : "") +
+          "</span>" +
+          '<span class="layer-option__note">' + item.note + "</span>" +
+        "</span>" +
+      "</button>"
+    );
+  }
+
+  function layerPanelHtml() {
+    const base = LAYERS.earth.base
+      .map((item) => optionRow("base", item, state.base.earth === item.id))
+      .join("");
+
+    const dataGroups = LAYERS.earth.data
+      .map((group) => {
+        const key = group.group.toLowerCase();
+        const items = group.items
+          .map((item) => optionRow("data", item, state.layer.earth === item.id))
+          .join("");
+        return (
+          '<div class="layer-group" data-open="' + String(groupState[key]) + '">' +
+            groupHead(key, group.group) +
+            '<div class="layer-group__body" role="radiogroup" aria-label="' + group.group + '">' + items + "</div>" +
+          "</div>"
+        );
+      })
+      .join("");
+
+    document.body.classList.toggle("layers-open", true);
+    const pct = Math.round(state.opacity.earth * 100);
+    return (
+      '<div class="flex items-start justify-between gap-2">' +
+        "<div>" +
+          '<h2 class="layer-panel__title">Map layers</h2>' +
+          '<p class="layer-panel__intro">Satellite view underneath, one data layer on top — drawn from the grids RADIUM analyses.</p>' +
+        "</div>" +
+        '<button type="button" class="layer-off" data-layer-close aria-label="Close the layer panel">?</button>' +
+      "</div>" +
+      '<div class="layer-group" data-open="' + String(groupState.base) + '">' +
+        groupHead("base", "Satellite view") +
+        '<div class="layer-group__body" role="radiogroup" aria-label="Satellite view">' + base + "</div>" +
+      "</div>" +
+      '<div class="layer-group" data-open="' + String(groupState.data) + '">' +
+        '<div class="flex items-center justify-between gap-2">' +
+          groupHead("data", "Data layer") +
+          (state.layer.earth
+            ? '<button type="button" class="layer-off" data-layer-off>Turn off</button>'
+            : "") +
+        "</div>" +
+        '<div class="layer-group__body">' +
+          '<div class="layer-opacity">' +
+            '<span class="layer-opacity__label">Opacity</span>' +
+            '<input type="range" min="20" max="100" step="1" value="' + pct + '" data-layer-opacity ' +
+              'style="--fill:' + pct + '%" aria-label="Data layer opacity">' +
+            '<span class="layer-opacity__value">' + pct + "%</span>" +
+          "</div>" +
+          dataGroups +
+        "</div>" +
+      "</div>" +
+      '<div class="layer-group" data-open="' + String(groupState.overlays) + '">' +
+        groupHead("overlays", "Overlays") +
+        '<div class="layer-group__body">' +
+          '<button type="button" class="layer-toggle-row" data-labels-toggle aria-pressed="' + String(state.labels) + '">' +
+            "<span>Boundaries &amp; place labels</span>" +
+            '<span class="layer-switch" aria-hidden="true"></span>' +
+          "</button>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function renderLayers() {
-    const host = $("#layer-controls");
-    host.innerHTML = "";
+    const chipHost = $("#layer-controls");
+    const panel = $("#layer-panel");
+    const toggle = $("#layer-panel-toggle");
+    const isEarth = state.body === "earth";
 
-    LAYERS[state.body].forEach((layer) => {
-      const btn = el("button", "layer-btn", layer.label);
-      btn.type = "button";
-      btn.setAttribute("aria-pressed", String(state.layer[state.body] === layer.id));
-      btn.addEventListener("click", () => {
-        state.layer[state.body] = layer.id;
-        renderLayers();
-        if (state.body === "earth") applyEarthLayer();
-        else applyGlobeTexture();
-      });
-      host.appendChild(btn);
-    });
+    toggle.classList.toggle("hidden", !isEarth);
+    toggle.setAttribute("aria-expanded", String(isEarth && state.panelOpen));
+    panel.hidden = !(isEarth && state.panelOpen);
+    document.body.classList.toggle("layers-open", !panel.hidden);
+    if (panel.hidden) panel.innerHTML = "";
 
-    if (state.body === "earth") {
-      const labelsBtn = el("button", "layer-btn", "Boundaries");
-      labelsBtn.type = "button";
-      labelsBtn.setAttribute("aria-pressed", String(state.labels));
-      labelsBtn.title = "Show country boundaries and place labels";
-      labelsBtn.addEventListener("click", () => {
-        state.labels = !state.labels;
-        renderLayers();
-        applyLabels();
+    chipHost.innerHTML = "";
+    if (!isEarth) {
+      LAYERS[state.body].forEach((layer) => {
+        const btn = el("button", "layer-btn", layer.label);
+        btn.type = "button";
+        btn.setAttribute("aria-pressed", String(state.layer[state.body] === layer.id));
+        btn.addEventListener("click", () => {
+          state.layer[state.body] = layer.id;
+          renderLayers();
+          applyGlobeTexture();
+        });
+        chipHost.appendChild(btn);
       });
-      host.appendChild(labelsBtn);
+    } else if (!panel.hidden) {
+      panel.innerHTML = layerPanelHtml();
     }
 
-    const active = LAYERS[state.body].find((l) => l.id === state.layer[state.body]);
-    const sourceNote =
-      state.body === "earth"
-        ? "Imagery © Esri, Maxar, Earthstar Geographics · fields computed from NASA POWER + ETOPO1"
-        : state.body === "moon"
-        ? "NASA Moon Trek / SVS (LRO)"
-        : "NASA Mars Trek (MGS/TES)";
+    renderLegend();
+  }
 
+  function renderLegend() {
+    if (state.body !== "earth") {
+      const active = (LAYERS[state.body] || []).find((l) => l.id === state.layer[state.body]);
+      $("#legend").innerHTML =
+        '<p class="eyebrow">Layer</p>' +
+        '<p class="mt-1 text-[11px] leading-relaxed text-bone">' + (active ? active.legend : "") + "</p>" +
+        '<p class="mt-1 text-[10px] uppercase tracking-widest text-muted">' +
+          (state.body === "moon" ? "NASA Moon Trek / SVS (LRO)" : "NASA Mars Trek (MGS/TES)") + "</p>";
+      return;
+    }
+
+    const layer = currentDataLayer();
+    const baseItem = LAYERS.earth.base.find((b) => b.id === state.base.earth);
     let scale = "";
-    if (state.body === "earth" && active) {
-      if (active.kind === "temp") {
-        const meta = window.RADIUM_GRID_EARTH && window.RADIUM_GRID_EARTH.layer;
-        if (meta) {
+    if (layer) {
+      if (layer.kind === "suit" || layer.kind === "twin") {
+        const range = state.fieldRange && state.fieldRange.kind === layer.kind ? state.fieldRange : null;
+        if (layer.kind === "twin" && !state.twinSource) {
+          scale = '<p class="mt-2 text-[10px] leading-relaxed text-amber/80">Pick a Moon or Mars site first, then this field lights up.</p>';
+        } else {
           scale =
-            '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaa8,#e9b244,#f7dbac)"></div>' +
+            '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.grade + '"></div>' +
             '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-            fmt(meta.min, 0) + " °C</span><span>" + fmt(meta.max, 0) + " °C</span></div>";
+              (range ? fmt(range.lo, 0) : "low") + (layer.kind === "twin" ? "%" : " pts") + "</span><span>" +
+              (range ? fmt(range.hi, 0) : "high") + (layer.kind === "twin" ? "%" : " pts") + "</span></div>";
         }
-      } else if (active.kind === "suit") {
-        const range = state.fieldRange && state.fieldRange.kind === "suit" ? state.fieldRange : null;
+      } else if (layer.kind === "elev") {
+        const meta = window.RADIUM_GRID_EARTH_ELEV;
         scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaa8,#e9b244,#f7dbac)"></div>' +
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.elev + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-          (range ? fmt(range.lo, 0) + " pts" : "weak") + "</span><span>" +
-          (range ? fmt(range.hi, 0) + " pts" : "strong") + "</span></div>";
-      } else if (active.kind === "raster") {
+            fmt(meta.minM, 0) + " m</span><span>" + fmt(meta.maxM, 0) + " m</span></div>";
+      } else if (layer.kind === "temp") {
+        const meta = window.RADIUM_GRID_EARTH_HEAT;
+        scale =
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.heat + '"></div>' +
+          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
+            fmt(meta.min, 0) + " ?C</span><span>" + fmt(meta.max, 0) + " ?C</span></div>";
+      } else if (layer.kind === "raster") {
         const meta = window.RADIUM_PROSPECT_META;
         scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaa8,#e9b244,#f7dbac)"></div>' +
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.grade + '"></div>' +
           '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>0</span><span>100</span></div>' +
-          (meta
-            ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
-              meta.screenedCells.toLocaleString() +
-              " land cells screened · &lt;65 not shown</p>"
-            : "");
-      } else if (active.kind === "twin") {
-        const range = state.fieldRange && state.fieldRange.kind === "twin" ? state.fieldRange : null;
-        scale = state.twinSource
-          ? '<div class="mt-2 h-1.5 w-full rounded-full" style="background:linear-gradient(90deg,#091642,#1e6098,#3abaa8,#e9b244,#f7dbac)"></div>' +
-            '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>closest ' +
-            (range ? fmt(range.lo, 0) : "—") + "%</span><span>best " + (range ? fmt(range.hi, 0) : "—") + "%</span></div>"
-          : '<p class="mt-2 text-[10px] leading-relaxed text-amber/80">Pick a Moon/Mars site or click the globe first, then reopen Earth Twin mode to light up this field.</p>';
+          (meta ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
+            meta.screenedCells.toLocaleString() + " land cells ? below 65 not drawn</p>" : "");
       }
     }
 
     $("#legend").innerHTML =
-      '<p class="eyebrow">Layer</p>' +
-      '<p class="mt-1 text-[11px] leading-relaxed text-bone">' + (active ? active.legend : "") + "</p>" +
+      '<p class="eyebrow">' + (layer ? layer.label : "Satellite view") + "</p>" +
+      '<p class="mt-1 text-[11px] leading-relaxed text-bone">' +
+        (layer ? layer.note : baseItem ? baseItem.note : "") + "</p>" +
       scale +
-      '<p class="mt-1 text-[10px] uppercase tracking-widest text-muted">' + sourceNote + "</p>";
+      '<p class="mt-1 text-[10px] uppercase tracking-widest text-muted">' +
+        (state.base.earth === "earth_base"
+          ? "Imagery ? Esri, Maxar, Earthstar Geographics"
+          : state.base.earth === "earth_s2"
+          ? "Sentinel-2 cloudless © EOX (CC BY 4.0)"
+          : "NASA GIBS Blue Marble") +
+      "</p>";
   }
 
   /* -------------------------------------------------------------- detail */
@@ -1762,8 +1971,8 @@
     renderDetail();
     if (state.body === "earth") {
       renderEarthMarkers();
-      const active = LAYERS.earth.find((l) => l.id === state.layer.earth);
-      if (active && active.kind === "suit") refreshFieldLayer();
+      const active = currentDataLayer();
+      if (active && active.kind === "suit") refreshFieldLayer(active);
     } else renderGlobePoints();
   }
 
@@ -1774,6 +1983,18 @@
     science: { geology: 0.30, terrain: 0.08, environment: 0.06, resources: 0.10, processes: 0.04, habitability: 0.24, subsurface: 0.14, operations: 0.04 },
     landing: { geology: 0.08, terrain: 0.34, environment: 0.14, resources: 0.08, processes: 0.06, habitability: 0.03, subsurface: 0.03, operations: 0.24 }
   };
+
+  /* Opacity slider: delegated so the panel can be re-rendered freely. */
+  document.addEventListener("input", (event) => {
+    const slider = event.target.closest("[data-layer-opacity]");
+    if (!slider) return;
+    const pct = Number(slider.value);
+    state.opacity.earth = Math.max(0.2, Math.min(1, pct / 100));
+    slider.style.setProperty("--fill", pct + "%");
+    const label = slider.parentElement && slider.parentElement.querySelector(".layer-opacity__value");
+    if (label) label.textContent = pct + "%";
+    if (state.body === "earth") applyEarthLayer();
+  });
 
   /* -------------------------------------------------------------- sources */
   function renderSources() {
@@ -1786,9 +2007,10 @@
       ["NOAA ETOPO1 elevation", "1 arc-minute global relief via OpenTopoData", "https://www.ngdc.noaa.gov/mgg/global/"],
       ["LOLA LDEM_4 (Moon DEM)", "4 pixels/deg int16, slope + relief computed here", "https://pds-geosciences.wustl.edu/lro/lro-l-lola-3-rdr-v1/"],
       ["MOLA MEGDR (Mars DEM)", "16 pixels/deg int16 topography, slope + relief computed here", "https://pds-geosciences.wustl.edu/mgs/mgs-m-mola-5-megdr-l3-v1/"],
-      ["MODIS Terra land surface temperature", "NASA GIBS daily swath (clear-sky only; replaced by the computed field below)", "https://gibs.earthdata.nasa.gov/"],
-      ["Earth temperature field", "IDW of 40 NASA POWER climatologies, masked to 2,500 km", "https://power.larc.nasa.gov/"],
-      ["Blue Marble shaded relief", "NASA GIBS (live tiles + cached fallback)", "https://worldview.earthdata.nasa.gov/"],
+      ["Sentinel-2 cloudless 2020", "Base imagery option: cloud-free true-colour mosaic, about 10 m (default)", "https://s2maps.eu/"],
+      ["Blue Marble shaded relief", "Base imagery option: NASA GIBS tiles over the cached offline fallback", "https://worldview.earthdata.nasa.gov/"],
+      ["WorldClim 2.1 bio_1", "Heat map: annual mean air temperature, 10 arc-minute, land only", "https://www.worldclim.org/data/worldclim21.html"],
+      ["AWS terrain elevation grid", "Elevation layer: 0.25 degree cell means from SRTM/NED/GMTED/ETOPO", "https://registry.opendata.aws/terrain-tiles/"],
       ["High-resolution imagery + boundaries", "Esri World Imagery and World Boundaries and Places", "https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9"],
       ["LROC mosaic with polar fill", "NASA SVS LROC colour poles, blended with the LRO WAC mosaic", "https://svs.gsfc.nasa.gov/4720"],
       ["AWS Terrain Tiles (Mapzen terrarium)", "SRTM / NED / GMTED / ETOPO blend; elevation, slope and relief for the global scan", "https://registry.opendata.aws/terrain-tiles/"],
@@ -1819,6 +2041,51 @@
 
   /* ---------------------------------------------------------------- events */
   document.addEventListener("click", (event) => {
+    const layerGroup = event.target.closest("[data-layer-group]");
+    if (layerGroup) {
+      const key = layerGroup.dataset.layerGroup;
+      groupState[key] = !groupState[key];
+      renderLayers();
+      return;
+    }
+
+    const basePick = event.target.closest("[data-layer-base]");
+    if (basePick) {
+      state.base.earth = basePick.dataset.layerBase;
+      renderLayers();
+      applyEarthLayer();
+      return;
+    }
+
+    const dataPick = event.target.closest("[data-layer-data]");
+    if (dataPick) {
+      const id = dataPick.dataset.layerData;
+      state.layer.earth = state.layer.earth === id ? null : id;
+      renderLayers();
+      applyEarthLayer();
+      return;
+    }
+
+    if (event.target.closest("[data-layer-off]")) {
+      state.layer.earth = null;
+      renderLayers();
+      applyEarthLayer();
+      return;
+    }
+
+    if (event.target.closest("[data-layer-close]") || event.target.closest("#layer-panel-toggle")) {
+      state.panelOpen = !state.panelOpen;
+      renderLayers();
+      return;
+    }
+
+    if (event.target.closest("[data-labels-toggle]")) {
+      state.labels = !state.labels;
+      renderLayers();
+      applyLabels();
+      return;
+    }
+
     const setBtn = event.target.closest("[data-set]");
     if (setBtn) {      if (state.set !== setBtn.dataset.set) {
         state.set = setBtn.dataset.set;
@@ -1926,8 +2193,14 @@
     if (!raw) return false;
     const [bodyKey, layerKey, targetId, zoomRaw] = raw.split(":");
     if (!BODY_META[bodyKey]) return false;
-    if (layerKey && LAYERS[bodyKey].some((l) => l.id === layerKey)) {
-      state.layer[bodyKey] = layerKey;
+    if (layerKey) {
+      if (bodyKey === "earth") {
+        const dataIds = LAYERS.earth.data.reduce((acc, group) => acc.concat(group.items.map((i) => i.id)), []);
+        if (dataIds.includes(layerKey)) state.layer.earth = layerKey;
+        if (LAYERS.earth.base.some((b) => b.id === layerKey)) state.base.earth = layerKey;
+      } else if (LAYERS[bodyKey].some((l) => l.id === layerKey)) {
+        state.layer[bodyKey] = layerKey;
+      }
     }
     if (targetId) {
       const target = Object.values(SITES).flat().find((s) => s.id === targetId);
@@ -1949,7 +2222,7 @@
     return true;
   }
 
-  loadProspectRaster();
+  preloadRasters();
   if (!applyHash()) setBody("moon");
   if (state.body === "earth" && state.twinSource && !state.selected.earth) {
     const best = R.topTwins(SITES.earth, state.twinSource, 1)[0];

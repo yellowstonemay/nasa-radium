@@ -61,12 +61,33 @@ which is which.
 | Moon day / night temp | **modelled** isotonic latitude fit to Diviner site climatology, rendered over the LRO WAC mosaic | [PDS Diviner](https://pds-geosciences.wustl.edu/missions/lro/diviner.htm) · [Moon Trek](https://trek.nasa.gov/moon/) |
 | Mars base | MGS MOLA colour shaded relief, 463 m | [Mars Trek](https://trek.nasa.gov/mars/) · [PDS MRO](https://pds-geosciences.wustl.edu/missions/mro/) |
 | Mars colour | Viking MDIM 2.1 mosaic, 232 m | [Mars Trek](https://trek.nasa.gov/mars/) · [USGS Astrogeology](https://astrogeology.usgs.gov/) |
-| Earth base | High-resolution satellite imagery (Esri World Imagery) over a cached Blue Marble fallback, zoomable to level 17 | [Esri](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) |
+| Earth base | Three interchangeable base maps: Sentinel-2 cloudless (default, ~10 m), NASA Blue Marble, Esri World Imagery (sharp to zoom 17), all over a cached offline fallback | [EOX](https://s2maps.eu/) ? [GIBS](https://worldview.earthdata.nasa.gov/) ? [Esri](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) |
 | Earth boundaries | Country borders, place and water labels | Esri World Boundaries and Places |
-| Earth surface temperature | **computed** IDW of the 40 NASA POWER climatologies, faded beyond 2,500 km | [NASA POWER](https://power.larc.nasa.gov/) |
+| Earth heat map | WorldClim 2.1 `bio_1` annual mean air temperature, 10 arc-minute, land only | [WorldClim](https://www.worldclim.org/data/worldclim21.html) |
+| Earth elevation | **computed** 0.25 degree cell means of the AWS terrain tiles | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) |
 | Earth analog grade field | **computed** from the eight-row rubric, follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
 | Earth prospect scan | **computed** 0.25° global screening of every land cell against the analog envelope | [AWS terrain](https://registry.opendata.aws/terrain-tiles/) · [WorldClim](https://www.worldclim.org/data/worldclim21.html) · [Natural Earth](https://www.naturalearthdata.com/) |
+
+### Map layer panel
+
+The Earth map uses a **layer drawer** (the `Layers` button, top left of the map) instead of a chip
+row: one **satellite view** underneath and one **data layer** on top, with an opacity slider and a
+`Turn off` action. Groups collapse, so the panel fits a laptop screen.
+
+| Group | Options |
+| --- | --- |
+| Satellite view | Sentinel-2 cloudless (default) · Blue Marble · Esri World Imagery |
+| Terrain | Elevation |
+| Analysis | Analog grade field (default) · Heat map · Twin similarity |
+| Screening | Prospect scan |
+| Overlays | Boundaries and place labels |
+All four data layers draw through **one ramp family** (deep violet at the low end, teal and lime
+through the middle, amber at the top) so they read as the same instrument, and each carries a legend
+with its real value range. Rasters ship as 8-bit masks and are colourised in the browser, so the
+ramp, the opacity slider and the legend always agree. The two interpolated fields (grade, twin) are
+computed at 1440x720 with a 1,300 km fade radius, which keeps them as local halos around measured
+sites instead of washing out whole continents.
 
 ### Map pins
 
