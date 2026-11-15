@@ -246,6 +246,10 @@ analogs" — runs over `SITES.earth.concat(SITES.discovered)`, so a discovered c
 curated one or sit alongside it. Discovered hits are labelled `screened` in the list and keep their
 dashed pin on the map; picking one switches the shortlist tab to match, so the selection is visible.
 
+The shortlist header always names the target being matched — *Earth matches · to 89.5° S 120° E on the
+Moon · day −53 °C · night −192 °C · slope 8.6°* — so a screenshot or a demo jump still says which lunar
+or Martian place the ranking is about, and the map banner repeats it.
+
 Sanity check that the metric reproduces expert judgment: the best twin for *Connecting Ridge* comes
 out as Haughton Crater / University Valley, both long-standing NASA analog sites.
 

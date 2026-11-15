@@ -190,6 +190,11 @@
 
   /* Curated plus discovered: a match question is about the planet, not about
      which shortlist tab happens to be open. */
+  function bodyPhrase(body) {
+    const label = BODY_META[body] ? BODY_META[body].label : "target";
+    return body === "moon" ? "the Moon" : label;
+  }
+
   function twinnableSites() {
     return SITES.earth.concat(SITES.discovered);
   }
@@ -268,6 +273,32 @@
   function renderRail() {
     const list = $("#rail-list");
     list.innerHTML = "";
+
+    /* Say what the Earth shortlist is being matched against: a named Moon/Mars
+       site in twin mode, or the clicked coordinates of a point query. */
+    const sub = $("#rail-sub");
+    const source = state.point
+      ? state.point.site
+      : state.body === "earth"
+      ? state.twinSource
+      : null;
+    if (sub) {
+      if (source) {
+        const bodyLabel = bodyPhrase(source.body);
+        const where = source.name;
+        let detail = "";
+        if (source.tempDayC != null) {
+          detail =
+            '<span class="block text-muted">day ' + fmt(source.tempDayC) + " °C · night " +
+            fmt(source.tempNightC) + " °C · slope " + fmt(source.slopeDeg, 1) + "°</span>";
+        }
+        sub.innerHTML = 'to <span class="text-bone">' + where + "</span> on " + bodyLabel + detail;
+        sub.classList.remove("hidden");
+      } else {
+        sub.innerHTML = "";
+        sub.classList.add("hidden");
+      }
+    }
 
     const split = $("#rail-split");
     if (split) {
@@ -2018,8 +2049,9 @@
     host.classList.remove("hidden");
     host.innerHTML =
       '<div class="flex flex-wrap items-center gap-2 rounded-xl border border-ice/25 bg-[#061019]/85 px-3 py-2 backdrop-blur-md">' +
-        '<span class="eyebrow text-ice/80">Earth twin</span>' +
-        '<span class="text-[12px] text-bone">for ' + state.twinSource.name + "</span>" +
+        '<span class="eyebrow text-ice/80">Earth matches</span>' +
+        '<span class="text-[12px] text-bone">to ' + state.twinSource.name + " on " +
+          bodyPhrase(state.twinSource.body) + "</span>" +
         twins.map((t) =>
           '<button type="button" class="layer-btn !py-1" data-twin="' + t.site.id + '">' +
             (t.site.prospect ? '<span class="text-ice/70" aria-hidden="true">\u25c7 </span>' : "") +
