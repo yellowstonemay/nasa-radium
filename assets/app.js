@@ -37,7 +37,7 @@
   const BODY_META = {
     moon: {
       label: "Moon", title: "Lunar base suitability", note:
-        "Graded from LRO/LOLA/Diviner-derived terrain, illumination and ice estimates. Letter grades weight water, ops and terrain most heavily by default.",
+        "25 candidates, from the 13 Artemis III south-polar regions to far-side science targets. Terrain comes from LOLA, temperature from the Diviner-calibrated model, illumination and ice from published studies. Letter grades weight water, ops and terrain most heavily by default.",
       center: { lat: -60, lng: 40, altitude: 1.9 }
     },
     mars: {
@@ -709,8 +709,9 @@
         color: isSelected ? "#fff4dd" : sphereColor(card.letter),
         radius: isSelected ? 1.3 : 0.8,
         // Elevation stair-steps fan out polar clusters that would otherwise
-        // collapse into one blob.
-        alt: isSelected ? 0.045 : 0.006 + Math.max(0, rank) * 0.0072
+        // collapse into one blob. globe.gl draws points as cylinders, so the
+        // stagger has to stay small or long lists render as vertical bars.
+        alt: isSelected ? 0.012 : 0.002 + Math.min(0.012, Math.max(0, rank) * 0.0006)
       };
     });
 

@@ -9,7 +9,7 @@ query anywhere, plus a graded shortlist on each body:
 
 | View | What it does |
 | --- | --- |
-| **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier |
+| **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier ? 25 lunar sites from the 13 Artemis III regions to far-side science targets |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs, searched across **both** shortlists (40 curated + 39 discovered) |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
@@ -30,6 +30,7 @@ Regenerate the derived data (all three scripts are keyless and idempotent):
 ```powershell
 python tools\fetch_textures.py      # stitches NASA Trek/GIBS tiles into assets/textures/
 python tools\build_grids.py         # LOLA + MOLA DEMs -> 0.5 deg terrain/temperature grids
+python tools\build_moon_candidates.py # appends the expanded lunar candidate set (idempotent)
 python tools\build_earth_layers.py  # Earth temperature field + night-lights probe
 python tools\fetch_earth_data.py    # NASA POWER + ETOPO1 -> assets/earth-metrics.js
 python tools\fetch_site_photos.py   # Sentinel-2 mosaics + Commons photos (attributed)
@@ -183,6 +184,39 @@ literature-derived regional estimates. Each dossier shows a confidence tag and a
 Known caveats: POWER is 0.5° grid-cell climatology (summit sites read warmer than station data);
 Moon/Mars values are regional not in-situ; atmosphere is deliberately excluded from the Earth Twin
 similarity because nothing on Earth reproduces a vacuum or ~0.6 kPa.
+
+## Lunar candidate set
+
+25 graded sites, built from published lunar science rather than picked by eye:
+
+| Group | Sites |
+| --- | --- |
+| Artemis III candidate regions (NASA, 2022) | Peak Near Shackleton, Connecting Ridge + Extension, Faustini Rim A, de Gerlache Rim 1/2, de Gerlache?Kocher Massif, Haworth, Malapert Massif, Leibnitz Beta Plateau, Nobile Rim 1/2, Amundsen Rim |
+| Other polar (peak-of-eternal-light work) | Shackleton rim, Cabeus, Whipple rim, Peary |
+| Science and resources | Aristarchus Plateau, Gruithuisen Domes, Compton?Belkovich, Von K?rm?n (Chang'e-4), Schr?dinger Basin, Marius Hills pit, Mare Tranquillitatis, Sinus Medii |
+
+`tools/build_moon_candidates.py` appends the expanded set and is idempotent (the ten original
+hand-written entries are never touched ? it rewrites only its own marked block).
+
+Where the numbers come from:
+
+- **Terrain** ? elevation is sampled bilinearly from the native LOLA grid (`LDEM_4`, 4 px/deg), not
+  the 0.5? product the browser uses, because a polar rim can otherwise land inside the crater next to
+  it. Slope and relief come from the block-averaged 0.5? grids so they stay comparable with the
+  point-query numbers.
+- **Rim placement** ? Artemis region centroids sometimes sit on a crater floor, so rim, peak and
+  plateau sites are snapped to the highest ground within 1? of the published centre. The shift is
+  printed on every run.
+- **Temperature** ? the same Diviner-calibrated latitude model the point query uses, so a dossier
+  always agrees with a click at those coordinates (all polar sites therefore share the model's polar
+  values; that limitation is stated in the layer legend).
+- **Illumination, Earth visibility, ice proximity and the qualitative scores** ? literature-derived
+  (Artemis III region study, LRO illumination and PSR mapping, LROC and Diviner results), each with a
+  confidence tag and a citation on the dossier.
+
+Grades come out as expected: the Shackleton?de Gerlache ridge sites lead (A), the sunlit rims follow
+(B), near-side science targets grade C for having no water, and the far-side sites grade D because
+Earth visibility ? and therefore direct comms ? is zero.
 
 ## Global analog prospector (discovered candidates)
 

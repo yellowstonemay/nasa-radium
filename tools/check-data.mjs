@@ -46,6 +46,12 @@ for (const body of ["moon", "mars", "earth", "discovered"]) {
   if (sites.earth.length < 30) {
     problems.push(`earth: only ${sites.earth.length} sites, expected at least 30`);
   }
+  if (sites.moon.length < 20) {
+    problems.push(`moon: only ${sites.moon.length} sites, expected at least 20`);
+  }
+  if (sites.mars.length < 12) {
+    problems.push(`mars: only ${sites.mars.length} sites, expected at least 12`);
+  }
 }
 
 // Discovered candidates must stay clear of the curated set, sit on buildable
@@ -75,6 +81,32 @@ for (let i = 0; i < sites.discovered.length; i += 1) {
     if (d < 400) problems.push(`${a.id}/${b.id} only ${d.toFixed(0)} km apart`);
   }
 }
+
+// Lunar coordinates must be unique and on the sphere, and every polar site has to
+// be near a pole rather than just labelled as one.
+const moonIds = new Set();
+for (const site of sites.moon) {
+  if (moonIds.has(site.id)) problems.push(`${site.id}: duplicate lunar id`);
+  moonIds.add(site.id);
+  if (!(Math.abs(site.lat) <= 90 && Math.abs(site.lon) <= 360)) {
+    problems.push(`${site.id}: coordinates out of range`);
+  }
+  // A base site cannot earn an A or B without a real water/ice story.
+  const card = scoreSite(site, DEFAULT_WEIGHTS);
+  if ((card.letter === "A" || card.letter === "B") && (site.iceIndex || 0) < 40) {
+    problems.push(`${site.id}: grade ${card.letter} but iceIndex ${site.iceIndex}`);
+  }
+}
+const moonSpacing = [];
+for (let i = 0; i < sites.moon.length; i += 1) {
+  for (let j = i + 1; j < sites.moon.length; j += 1) {
+    const a = sites.moon[i];
+    const b = sites.moon[j];
+    const d = sandbox.window.RADIUM.distanceKm(a.lat, a.lon, b.lat, b.lon);
+    if (d < 15) moonSpacing.push(`${a.id}/${b.id} only ${d.toFixed(0)} km apart`);
+  }
+}
+if (moonSpacing.length) problems.push(...moonSpacing);
 
 // Spot-check the similarity metric against expert-known analogs.
 const ridge = sites.moon.find((s) => s.id === "connecting-ridge");
