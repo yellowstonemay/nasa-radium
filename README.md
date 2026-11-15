@@ -160,6 +160,21 @@ stages also carry a **zoom stepper** at the bottom right: Leaflet's own control 
 matching `+ / −` group that walks the globe camera in fixed altitude ratios (0.45–5.6 globe radii)
 and disables itself at either limit.
 
+### Star field
+
+The globes float in a painted sky instead of a dark rectangle. `paintStarfield()` draws it on a
+canvas the size of the stage: a deep-space wash (dark enough for faint stars to register, thin enough
+that the panel's brand glows still read at the edges), a few thousand stars on a cubic brightness tail
+so most are sub-pixel dust and only a thin handful are bright, a second dusting of unresolved specks,
+and five soft concentrations because a perfectly even field reads as noise. Nothing is shipped as a
+bitmap and nothing tiles: the field re-solves to the stage on resize and stays crisp at DPR 2.
+
+The generator is seeded (`SKY_SEED`), so a resize redraws the same sky rather than reshuffling it.
+The canvas is hidden on Earth, whose flat map carries its own imagery. Density sits deliberately
+below a photographic reference — about 5% of sky pixels lifted above the background against 8% —
+because the Moon and Mars put grade chips, leader lines and name plates over the sky, and a busier
+field fought them.
+
 ### Site imagery (real, never generated)
 
 Every dossier carries a **street-view style gallery** of the actual place.

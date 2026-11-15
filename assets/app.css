@@ -427,6 +427,17 @@ input[type="range"]:focus-visible::-webkit-slider-thumb {
 #view-globe canvas,
 #view-earth { outline: none; }
 
+/* Star field behind the globes. It is drawn on a canvas so the specks stay
+   crisp at any DPI and the field re-solves to the stage instead of tiling. */
+.starfield {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  pointer-events: none;
+}
+.starfield[hidden] { display: none; }
+
 .leaflet-container {
   background: #05070f;
   font-family: inherit;

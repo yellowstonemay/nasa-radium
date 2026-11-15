@@ -364,6 +364,12 @@
     if (body !== "earth") state.twinSource = null;
     $("#view-globe").classList.toggle("hidden", body === "earth");
     $("#view-earth").classList.toggle("hidden", body !== "earth");
+    // The star field only belongs to the globes; the flat map ships its own sky.
+    const sky = document.getElementById("starfield");
+    if (sky) {
+      sky.hidden = body === "earth";
+      if (body !== "earth") paintStarfield();
+    }
     // The flat map ships its own Leaflet stepper; the globes get this one.
     document.getElementById("globe-zoom").hidden = body === "earth";
     renderTabs();
@@ -759,6 +765,125 @@
     }
     const source = selectedSite() || (state.point ? state.point.site : null);
     enterEarthTwin(source, earthId);
+  }
+
+  /* ------------------------------------------------------------------- sky */
+  /* A star field behind each globe, so the body reads as a world floating in
+     space instead of a texture on a dark rectangle. Painted on a canvas rather
+     than shipped as a bitmap: the specks stay crisp at any DPI, and the density
+     follows the stage instead of tiling a visible repeat. The generator is
+     seeded, so a resize redraws the same sky rather than reshuffling it. */
+  const SKY_SEED = 0x5eed1a7;
+
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function paintStarfield() {
+    const canvas = document.getElementById("starfield");
+    const host = document.getElementById("view-globe");
+    if (!canvas || !host) return;
+    if (state.body === "earth") return;
+    const rect = host.getBoundingClientRect();
+    const w = Math.round(rect.width);
+    const h = Math.round(rect.height);
+    if (w < 40 || h < 40) return;
+
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+    canvas.style.width = w + "px";
+    canvas.style.height = h + "px";
+    canvas.hidden = false;
+    const ctx = canvas.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    // Deep-space wash: the panel's brand glows still read at the edges, but the
+    // ground behind the body goes dark enough for faint stars to register.
+    ctx.fillStyle = "rgba(3,5,11,0.8)";
+    ctx.fillRect(0, 0, w, h);
+
+    const rand = mulberry32(SKY_SEED);
+    const count = Math.round((w * h) / 130);
+    // Uneven density: a perfectly uniform field reads as noise, while a few soft
+    // concentrations give the eye somewhere to rest.
+    const clumps = Array.from({ length: 5 }, () => ({
+      x: rand() * w,
+      y: rand() * h,
+      spread: (0.10 + rand() * 0.16) * Math.max(w, h),
+      share: 0.12 + rand() * 0.12
+    }));
+    const tints = ["255,255,255", "216,229,255", "255,238,216", "203,240,233"];
+
+    for (let i = 0; i < count; i++) {
+      let x = rand() * w;
+      let y = rand() * h;
+      const clump = clumps.find((c) => rand() < c.share);
+      if (clump) {
+        const angle = rand() * Math.PI * 2;
+        const off = Math.sqrt(-2 * Math.log(1 - rand() * 0.94)) * (clump.spread / 2.4);
+        x = clump.x + Math.cos(angle) * off;
+        y = clump.y + Math.sin(angle) * off * 0.85;
+        if (x < 0 || x > w || y < 0 || y > h) continue;
+      }
+      // Mostly sub-pixel dust with a thin tail of brighter points, so the field
+      // reads as fine grain rather than a scatter of beads.
+      const t = Math.pow(rand(), 2.15);
+      const radius = 0.3 + t * 1.0;
+      const tint = tints[Math.floor(rand() * tints.length)];
+      const alpha = 0.05 + t * 0.8;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(" + tint + "," + alpha.toFixed(3) + ")";
+      ctx.fill();
+      if (t > 0.93) {
+        const bloom = radius * 3;
+        const glow = ctx.createRadialGradient(x, y, 0, x, y, bloom);
+        glow.addColorStop(0, "rgba(" + tint + ",0.16)");
+        glow.addColorStop(1, "rgba(" + tint + ",0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(x, y, bloom, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // A dusting of sub-pixel specks under the named stars. Real skies are
+    // mostly unresolved light, and the fine grain is what stops the field
+    // reading as a scatter of beads.
+    const dust = Math.round(count * 0.9);
+    for (let i = 0; i < dust; i++) {
+      const x = rand() * w;
+      const y = rand() * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 0.2 + rand() * 0.35, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255," + (0.02 + rand() * 0.07).toFixed(3) + ")";
+      ctx.fill();
+    }
+  }
+
+  function initStarfield() {
+    const canvas = document.getElementById("starfield");
+    const host = document.getElementById("view-globe");
+    if (!canvas || !host) return;
+    paintStarfield();
+    let frame = null;
+    const redraw = () => {
+      if (frame) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        paintStarfield();
+      });
+    };
+    new ResizeObserver(redraw).observe(host);
+    window.addEventListener("resize", redraw);
   }
 
   /* --------------------------------------------------------------- globe */
@@ -3179,6 +3304,7 @@
     return true;
   }
 
+  initStarfield();
   preloadRasters();
   if (!applyHash()) setBody("moon");
   if (state.body === "earth" && state.twinSource && !state.selected.earth) {
