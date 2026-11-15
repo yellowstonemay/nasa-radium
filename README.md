@@ -11,6 +11,7 @@ query anywhere, plus a graded shortlist on each body:
 | --- | --- |
 | **Moon / Mars** | 3D globe, real NASA layer switching, graded candidate sites with a full dossier ? 25 lunar sites from the 13 Artemis III regions to far-side science targets, and 24 martian sites from Jezero to the shallow-ice belts |
 | **Click anywhere** | click any point on the globe → local conditions sampled from mission grids → ranked Earth analogs, searched across **both** shortlists (40 curated + 39 discovered) |
+| **Grade any point** | click any point on the *Earth* map → that coordinate is graded A–F on the same eight-row rubric, from shipped WorldClim / AWS Terrain rasters, and shows what it resembles on the Moon and Mars |
 | **Earth** | 2D map of 40 analog candidates across deserts, volcanic fields, impact craters, lava tubes, polar oases, salt pans and springs |
 | **Discovered** | the 40 curated sites stay published work; a separate switch shows 39 *new* candidates found by a global screen of every quarter-degree land cell |
 | **Earth Twin mode** | any site or clicked point → the map jumps to Earth and ranks its closest matches from both shortlists; discovered hits are tagged `screened` and keep their dashed pin |
@@ -40,6 +41,7 @@ python tools\merge_moon_texture.py  # blends WAC detail with the polar-filled te
 python tools\build_moon_temp_textures.py # renders the day/night temperature globe textures
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
+python tools\build_prospect_scan.py --rasters-only # terrain/climate rasters used by the Earth point grade
 ```
 
 Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
@@ -193,6 +195,30 @@ elevation models to a 720×360 (0.5°) grid and derives slope and local relief f
 Clicking the globe samples those PNG grids client-side. Water ice, dust and comms geometry are not
 resolved at 0.5°, so a point match uses only temperature, day/night swing, slope and roughness, and
 the dossier says so instead of inventing values.
+
+**Earth point grade (click anywhere on the flat map)** — the same idea in reverse: instead of asking
+"which Earth places match this Moon point", a click asks "how suitable is *this* Earth place". No
+request leaves the browser, so it works with the venue wifi down:
+
+| Field | Source | Kind |
+| --- | --- | --- |
+| Elevation | AWS Terrain Tiles, 0.25° cell means | measured |
+| Slope, local relief | computed at native DEM resolution, averaged per cell | measured |
+| Mean / max / min temperature | WorldClim 2.1 bio_1 / bio_5 / bio_6 | measured |
+| Precipitation | WorldClim 2.1 bio_12 / 365 | measured |
+| Solar, humidity, wind, pressure | inverse distance from the 4 nearest POWER-measured points | **estimated** |
+| Water, dust, science, cave access, biosignature | inverse distance from the 4 nearest *curated* analogs | **estimated** |
+
+`tools/build_prospect_scan.py --rasters-only` emits those seven fields as masked 1440×1440 mercator
+rasters (0 means no data, so oceans and ice sheets are honestly blank). Two pools are kept separate
+on purpose: physical climate is interpolated from any surveyed point, but the qualitative rows only
+exist as team judgements on the 40 catalogued analogs, so they are interpolated from those alone —
+otherwise a screened candidate's derived "science" score would leak into every nearby click.
+
+The result is the same eight-row rubric and the same A–F letters as the curated sites, plus two
+context numbers: how many of the 40 curated analogs it outranks, and the analog-envelope screen score
+at that cell. Fields and rows that are estimated are marked `*`, and since similarity is symmetric the
+dossier also lists the Moon and Mars sites the spot most resembles.
 
 **Compiled estimates** — the curated Moon/Mars dossiers and the ice/dust/subsurface indices are
 literature-derived regional estimates. Each dossier shows a confidence tag and a citation, and

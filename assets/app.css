@@ -972,4 +972,62 @@ dialog::backdrop {
   cursor: default;
 }
 
+/* ------------------------------------------- graded point (Earth click)
+   A reticle, not a pin: this is a computed grade at a coordinate, not a
+   surveyed site, and the map should never blur the two. */
+.point-reticle {
+  position: relative;
+  width: 58px;
+  height: 58px;
+  pointer-events: auto;
+  cursor: default;
+  display: grid;
+  place-items: center;
+}
+.point-reticle-ring {
+  position: absolute;
+  inset: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(99, 224, 206, 0.85);
+  box-shadow: 0 0 14px -2px rgba(99, 224, 206, 0.8), inset 0 0 10px -6px rgba(99, 224, 206, 0.9);
+  animation: reticlePulse 2.6s var(--ease-spring) infinite;
+}
+.point-reticle-ring::before,
+.point-reticle-ring::after {
+  content: "";
+  position: absolute;
+  background: rgba(99, 224, 206, 0.7);
+}
+.point-reticle-ring::before { left: 50%; top: -7px; bottom: -7px; width: 1px; margin-left: -0.5px; }
+.point-reticle-ring::after { top: 50%; left: -7px; right: -7px; height: 1px; margin-top: -0.5px; }
+.point-reticle-dot {
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #eafdf9;
+  box-shadow: 0 0 10px 1px rgba(99, 224, 206, 0.95);
+}
+.point-reticle-grade {
+  position: absolute;
+  left: calc(50% + 13px);
+  top: 1px;
+  min-width: 18px;
+  padding: 1px 4px;
+  border-radius: 6px;
+  border: 1.3px solid currentColor;
+  background: rgba(6, 11, 22, 0.82);
+  color: var(--ice);
+  font: 700 10px/1.35 "Inter", "Segoe UI", sans-serif;
+  text-align: center;
+  box-shadow: 0 0 12px -3px rgba(99, 224, 206, 0.9);
+}
+@keyframes reticlePulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.08); opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .point-reticle-ring { animation: none; }
+}
+
 /* Keep the legend clear of the layer drawer. */

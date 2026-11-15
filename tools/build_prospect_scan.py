@@ -866,11 +866,45 @@ def build_layers() -> dict[str, np.ndarray]:
     }
 
 
+def write_point_fields(layers: dict[str, np.ndarray], ok: np.ndarray) -> None:
+    """Rasters that let the browser grade any Earth point offline.
+
+    The screening grid already computes these eight fields; shipping the five the
+    point grader needs (plus elevation, written above) means a click anywhere is
+    graded from measurements instead of interpolated blobs. Slope and relief in
+    particular come from the native DEM, which a client cannot recover from the
+    0.25 degree elevation raster.
+    """
+    fields = [
+        ("earth-tmax", "RADIUM_GRID_EARTH_TMAX", layers["tempMaxC"], -40.0, 55.0, "degC",
+         "WorldClim 2.1 bio_5 (max temperature of the warmest month), 10 arc-minute"),
+        ("earth-tmin", "RADIUM_GRID_EARTH_TMIN", layers["tempMinC"], -60.0, 30.0, "degC",
+         "WorldClim 2.1 bio_6 (min temperature of the coldest month), 10 arc-minute"),
+        ("earth-precip", "RADIUM_GRID_EARTH_PRECIP", layers["precipMmDay"], 0.0, 12.0, "mm/day",
+         "WorldClim 2.1 bio_12 (annual precipitation) / 365, 10 arc-minute"),
+        ("earth-slope", "RADIUM_GRID_EARTH_SLOPE", layers["slope"], 0.0, 40.0, "deg",
+         "computed from AWS Terrain Tiles at native resolution, mean per 0.25 degree cell"),
+        ("earth-relief", "RADIUM_GRID_EARTH_RELIEF", layers["relief"], 0.0, 1200.0, "m",
+         "within-cell elevation standard deviation from AWS Terrain Tiles"),
+    ]
+    for name, global_name, values, lo, hi, units, source in fields:
+        valid = ok & np.isfinite(values)
+        encode_raster(values, valid, lo, hi, name, {
+            "global": global_name,
+            "units": units,
+            "source": source,
+            "url": "https://www.worldclim.org/data/worldclim21.html"
+            if "WorldClim" in source
+            else "https://registry.opendata.aws/terrain-tiles/",
+        })
+
+
 def main(argv: list[str]) -> int:
     layers = build_layers()
     ok = masks(layers)
     if "--rasters-only" in argv:
         write_elevation(layers, ok)
+        write_point_fields(layers, ok)
         metrics = curated_metrics()
         known = [
             {"id": key, "lat": value["lat"], "lon": value["lon"], "name": key}

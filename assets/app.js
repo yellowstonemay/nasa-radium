@@ -146,6 +146,8 @@
     weights: Object.assign({}, R.DEFAULT_WEIGHTS),
     twinSource: null,
     point: null,
+    /* Click-anywhere grade on the Earth map (see gradeEarthPoint). */
+    earthPoint: null,
     labels: true,
     /* Earth has two shortlists: the 40 published analogs and the 40 new
        candidates discovered by the global scan. */
@@ -232,6 +234,7 @@
     }
     state.body = body;
     state.point = null;
+    state.earthPoint = null;
     if (body !== "earth") state.twinSource = null;
     $("#view-globe").classList.toggle("hidden", body === "earth");
     $("#view-earth").classList.toggle("hidden", body !== "earth");
@@ -397,6 +400,11 @@
 
   function selectSite(id, fly) {
     state.point = null;
+    if (state.earthPoint) {
+      state.earthPoint = null;
+      document.getElementById("stage-title").textContent = BODY_META[state.body].title;
+      if (state.body === "earth") renderEarthMarkers();
+    }
     state.selected[state.body] = id;
     renderRail();
     renderDetail();
@@ -997,34 +1005,21 @@
       renderEarthMarkers();
     });
 
+    // First open of the flat map: pull in the rasters the point grader samples.
+    preloadPointRasters();
+
     earthMap.on("click", (event) => {
-      const nearest = R.nearestEarth(twinnableSites(), event.latlng.lat, event.latlng.lng);
-      const screen = prospectScoreAt(event.latlng.lat, event.latlng.lng);
-      const screenLine =
-        screen == null
-          ? '<p class="mt-1 text-[11px] leading-relaxed text-muted">Not screened: ocean, ice or no data at this cell.</p>'
-          : '<p class="mt-1 text-[11px] leading-relaxed text-bone">Screen score <span class="tabular-nums">' +
-            fmt(screen, 1) + " / 100</span> " +
-            (screen >= 65
-              ? '<span class="text-ice">— inside the analog envelope</span>'
-              : '<span class="text-muted">— outside the analog envelope</span>') +
-            "</p>";
-      if (nearest && nearest.km < 700) {
+      const lat = event.latlng.lat;
+      const lon = event.latlng.lng;
+      // Clicking a pin is a selection; anything else gets graded as a new site.
+      const nearest = R.nearestEarth(twinnableSites(), lat, lon);
+      if (nearest && nearest.km < 25) {
         syncSetTo(nearest.site.id);
         renderLayers();
         selectSite(nearest.site.id);
-        renderEarthMarkers();
         return;
       }
-      $("#legend").innerHTML =
-        '<p class="eyebrow">Point query</p>' +
-        '<p class="mt-1 text-[11px] leading-relaxed text-muted">' +
-        fmt(Math.abs(event.latlng.lat), 2) + "° " + (event.latlng.lat >= 0 ? "N" : "S") + " · " +
-        fmt(Math.abs(event.latlng.lng), 2) + "° " + (event.latlng.lng >= 0 ? "E" : "W") + "</p>" +
-        screenLine +
-        '<p class="mt-1 text-[11px] leading-relaxed text-muted">' +
-        (nearest ? "Nearest Earth site: " + nearest.site.name + ", " + fmt(nearest.km) + " km." : "") +
-        "</p>";
+      gradeEarthPoint(lat, lon);
     });
   }
 
@@ -1276,10 +1271,212 @@
     return value == null ? null : Math.round(value * 10) / 10;
   }
 
+  /* ---------------------------------------- grade any point on the Earth map */
+  /* These five rasters plus the elevation and heat maps are written by
+     tools/build_prospect_scan.py, so a click is graded from the same measured
+     fields the global screen used - no server, works offline at the venue. */
+  const POINT_RASTERS = {
+    elevationM: ["earth_elev", "RADIUM_GRID_EARTH_ELEV"],
+    tempMeanC: ["earth_heat", "RADIUM_GRID_EARTH_HEAT"],
+    tempMaxC: ["earth_tmax", "RADIUM_GRID_EARTH_TMAX"],
+    tempMinC: ["earth_tmin", "RADIUM_GRID_EARTH_TMIN"],
+    precipMmDay: ["earth_precip", "RADIUM_GRID_EARTH_PRECIP"],
+    slopeDeg: ["earth_slope", "RADIUM_GRID_EARTH_SLOPE"],
+    roughnessM: ["earth_relief", "RADIUM_GRID_EARTH_RELIEF"]
+  };
+
+  /* Sampling-only loader: draws the PNG once and keeps the raw bytes, with no
+     colourising work and no layer state. */
+  function ensureSampleRaster(id, metaGlobal) {
+    const existing = rasterCache[id];
+    if (existing) return existing;
+    const meta = window[metaGlobal];
+    if (!meta || !meta.file) return null;
+    const entry = { meta, scores: null, width: meta.width, height: meta.height, sample: true };
+    rasterCache[id] = entry;
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = entry.width;
+      canvas.height = entry.height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(image, 0, 0, entry.width, entry.height);
+      const data = ctx.getImageData(0, 0, entry.width, entry.height).data;
+      const scores = new Uint8Array(entry.width * entry.height);
+      for (let i = 0, p = 0; i < data.length; i += 4, p += 1) scores[p] = data[i];
+      entry.scores = scores;
+      if (state.earthPoint) {
+        gradeEarthPoint(state.earthPoint.lat, state.earthPoint.lon, { keepCamera: true });
+      }
+    };
+    image.src = meta.file;
+    return entry;
+  }
+
+  function samplePointField(key, lat, lon) {
+    const [id, metaGlobal] = POINT_RASTERS[key];
+    const entry = ensureSampleRaster(id, metaGlobal);
+    if (!entry) return null;
+    const value = valueAtRaster(id, lat, lon, entry.meta.min, entry.meta.max);
+    return value == null ? null : Math.round(value * 100) / 100;
+  }
+
+  /* Nearest measured analogues: Earth cannot measure science value, dust or
+     subsurface access from orbit, so those rows - and the fields POWER would
+     give us but a static site cannot fetch - are inverse-distance estimates
+     from the closest surveyed sites, and the dossier says so. */
+  function nearestAnalogues(pool, lat, lon, limit) {
+    return pool
+      .map((site) => ({ site, km: R.distanceKm(lat, lon, site.lat, site.lon) }))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, limit || 4);
+  }
+
+  function idwFrom(pairs, key) {
+    let sum = 0;
+    let weight = 0;
+    pairs.forEach(({ site, km }) => {
+      const value = Number(site[key]);
+      if (!Number.isFinite(value)) return;
+      const w = 1 / Math.pow(Math.max(60, km), 2);
+      sum += value * w;
+      weight += w;
+    });
+    return weight ? sum / weight : null;
+  }
+
+  function pointLabel(lat, lon) {
+    return fmt(Math.abs(lat), 2) + "° " + (lat >= 0 ? "N" : "S") + " " +
+      fmt(Math.abs(lon), 2) + "° " + (lon >= 0 ? "E" : "W");
+  }
+
+  /* Nearest measured points answer two different questions, so they use two
+     pools: POWER-measured climate comes from any surveyed point (curated or
+     discovered), while the team-assigned judgements - water, dust, science,
+     cave access, biosignature - only exist on the 40 curated analogs. */
+  const POINT_INFERRED = {
+    physical: ["solarKwh", "humidityPct", "windMs", "pressurePa"],
+    judged: ["iceIndex", "dustIndex", "scienceScore", "subsurfaceScore", "biosignatureScore"]
+  };
+
+  function gradeEarthPoint(lat, lon, options) {
+    const opts = options || {};
+    const measured = {};
+    Object.keys(POINT_RASTERS).forEach((key) => {
+      measured[key] = samplePointField(key, lat, lon);
+    });
+    const screen = prospectScoreAt(lat, lon);
+    const nearestMeasured = nearestAnalogues(twinnableSites(), lat, lon, 4);
+    const nearestCurated = nearestAnalogues(SITES.earth, lat, lon, 4);
+    const inferred = {};
+    POINT_INFERRED.physical.forEach((key) => {
+      inferred[key] = idwFrom(nearestMeasured, key);
+    });
+    POINT_INFERRED.judged.forEach((key) => {
+      inferred[key] = idwFrom(nearestCurated, key);
+    });
+
+    // Oceans, ice sheets and permanent water carry no data byte, so there is
+    // nothing honest to grade; say so instead of inventing a letter.
+    if (measured.elevationM == null || measured.tempMeanC == null) {
+      state.earthPoint = { lat, lon, empty: true, card: null, nearest: nearestCurated };
+      state.selected.earth = null;
+      $("#stage-title").textContent = "Point grade · " + pointLabel(lat, lon);
+      renderRail();
+      renderDetail();
+      renderEarthMarkers();
+      renderLegend();
+      return;
+    }
+
+    const site = {
+      id: "earth-point",
+      body: "earth",
+      name: pointLabel(lat, lon),
+      region: "Point grade",
+      lat,
+      lon,
+      isPoint: true,
+      elevationM: measured.elevationM,
+      slopeDeg: measured.slopeDeg == null ? 0 : measured.slopeDeg,
+      roughnessM: measured.roughnessM == null ? 0 : measured.roughnessM,
+      tempMeanC: measured.tempMeanC == null ? 0 : measured.tempMeanC,
+      tempDayC: measured.tempMaxC == null ? measured.tempMeanC : measured.tempMaxC,
+      tempNightC: measured.tempMinC == null ? measured.tempMeanC : measured.tempMinC,
+      precipMmDay: measured.precipMmDay,
+      solarKwh: inferred.solarKwh,
+      humidityPct: inferred.humidityPct,
+      windMs: inferred.windMs,
+      pressurePa: inferred.pressurePa,
+      iceIndex: inferred.iceIndex,
+      iceDistanceKm: 0,
+      dustIndex: inferred.dustIndex,
+      scienceScore: inferred.scienceScore,
+      subsurfaceScore: inferred.subsurfaceScore,
+      biosignatureScore: inferred.biosignatureScore,
+      illuminationPct: 0,
+      earthVisibilityPct: 100,
+      screenScore: screen,
+      measured,
+      nearest: nearestMeasured,
+      nearestCurated
+    };
+
+    const scored = R.withDims("earth", site);
+    const card = R.scoreSite(scored, state.weights);
+    const curated = SITES.earth.map((s) => R.scoreSite(s, state.weights).value);
+    const betterThan = curated.filter((value) => value < card.value).length;
+
+    // Similarity is symmetric, so the same metric answers "what does this spot
+    // resemble on the Moon or Mars", which is the question a base planner asks.
+    const twinsFor = (pool, body) =>
+      pool
+        .map((candidate) => ({ site: candidate, match: R.similarity(scored, candidate) }))
+        .sort((a, b) => b.match.score - a.match.score)
+        .slice(0, 3);
+
+    state.earthPoint = {
+      lat,
+      lon,
+      site: scored,
+      card,
+      screen,
+      nearest: nearestMeasured,
+      nearestCurated,
+      betterThan,
+      total: curated.length,
+      moon: twinsFor(SITES.moon, "moon"),
+      mars: twinsFor(SITES.mars, "mars")
+    };
+    state.selected.earth = null;
+    if (!opts.keepCamera) {
+      $("#stage-title").textContent = "Point grade · " + pointLabel(lat, lon);
+    }
+    renderRail();
+    renderDetail();
+    renderEarthMarkers();
+    renderLegend();
+  }
+
+  function clearEarthPoint() {
+    if (!state.earthPoint) return;
+    state.earthPoint = null;
+    document.getElementById("stage-title").textContent = BODY_META.earth.title;
+    renderEarthMarkers();
+    renderLegend();
+  }
+
   function preloadRasters() {
     Object.entries(RASTER_BY_LAYER).forEach(([id, [metaGlobal, rampName, floorPercent]]) => {
       ensureRaster(id, metaGlobal, rampName, floorPercent);
     });
+  }
+
+  /* The seven fields the Earth point grader samples are only needed once the
+     flat map is opened, and each is a 1440x1440 readback, so they are loaded
+     lazily instead of delaying the first paint. */
+  function preloadPointRasters() {
+    Object.values(POINT_RASTERS).forEach(([id, metaGlobal]) => ensureSampleRaster(id, metaGlobal));
   }
 
   function currentDataLayer() {
@@ -1359,7 +1556,49 @@
     if (!earthMap) return;
     earthMarkers.forEach((marker) => earthMap.removeLayer(marker));
     earthMarkers = [];
+    drawEarthSiteMarkers();
+    // Drawn last so the graded point sits above the pins it was clicked among.
+    renderEarthPointMarker();
+  }
 
+  /* The point that was graded by a click: a teal reticle rather than a pin, so
+     it is never mistaken for a surveyed site. */
+  function renderEarthPointMarker() {
+    const point = state.earthPoint;
+    if (!earthMap || !point) return;
+    if (point.empty) {
+      const ring = L.circleMarker([point.lat, point.lon], {
+        radius: 7,
+        color: "rgba(236,230,216,0.7)",
+        weight: 1.4,
+        dashArray: "3 3",
+        fillColor: "rgba(236,230,216,0.12)",
+        fillOpacity: 1
+      }).addTo(earthMap);
+      earthMarkers.push(ring);
+      return;
+    }
+    const marker = L.marker([point.lat, point.lon], {
+      icon: L.divIcon({
+        className: "rd-pin-wrap",
+        html:
+          '<div class="point-reticle" title="Graded point">' +
+            '<span class="point-reticle-ring"></span>' +
+            '<span class="point-reticle-dot"></span>' +
+            '<span class="point-reticle-grade">' + point.card.letter + "</span>" +
+          "</div>",
+        iconSize: [58, 58],
+        iconAnchor: [29, 29]
+      }),
+      keyboard: true,
+      title: "Graded point · grade " + point.card.letter + " · " + point.site.name,
+      riseOnHover: true,
+      zIndexOffset: 600
+    }).addTo(earthMap);
+    earthMarkers.push(marker);
+  }
+
+  function drawEarthSiteMarkers() {
     const twin = state.twinSource;
     earthMap.eachLayer((layer) => {
       if (layer instanceof L.Circle) earthMap.removeLayer(layer);
@@ -1588,6 +1827,28 @@
       return;
     }
 
+    if (state.earthPoint) {
+      const point = state.earthPoint;
+      if (point.empty) {
+        $("#legend").innerHTML =
+          '<p class="eyebrow">Point grade</p>' +
+          '<p class="mt-1 text-[11px] leading-relaxed text-bone">' + pointLabel(point.lat, point.lon) + "</p>" +
+          '<p class="mt-1 text-[10px] leading-relaxed text-muted">Ocean, ice or water: masked out of the rasters, so nothing to grade.</p>';
+        return;
+      }
+      const color = neonColor(point.card.letter);
+      $("#legend").innerHTML =
+        '<p class="eyebrow">Graded point</p>' +
+        '<p class="mt-1 flex items-baseline gap-2">' +
+          '<span class="font-display text-lg" style="color:' + color + '">' + point.card.letter + "</span>" +
+          '<span class="text-[11px] tabular-nums text-bone">' + fmt(point.card.value, 1) + " / 100</span>" +
+          '<span class="text-[10px] text-muted">' + pointLabel(point.lat, point.lon) + "</span>" +
+        "</p>" +
+        '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
+          "Click elsewhere for another grade, or a pin to open its dossier.</p>";
+      return;
+    }
+
     const layer = currentDataLayer();
     const baseItem = LAYERS.earth.base.find((b) => b.id === state.base.earth);
     let scale = "";
@@ -1748,6 +2009,134 @@
         "</div>" +
         why +
         '<div class="mt-2 space-y-1">' + rows + "</div></div>" +
+      "</div>";
+  }
+
+  /* Click-anywhere grade on the Earth map. Everything in this dossier is either
+     sampled from a shipped raster or an inverse-distance estimate from the
+     nearest surveyed sites, and the block at the bottom says which is which. */
+  function renderEarthPointDetail(host) {
+    const point = state.earthPoint;
+    if (point.empty) {
+      host.innerHTML =
+        '<div class="fade-in flex h-full min-h-[240px] flex-col items-start justify-center gap-2">' +
+          '<p class="eyebrow">Point grade · ' + pointLabel(point.lat, point.lon) + "</p>" +
+          '<p class="font-display text-2xl">No data at this cell</p>' +
+          '<p class="text-xs leading-relaxed text-muted">' +
+            "Open ocean, permanent ice and inland water are masked out of the terrain and climate rasters, so this coordinate has nothing to grade. Try a point on land." +
+          "</p>" +
+          '<button type="button" class="layer-btn !py-1 !text-[11px]" data-clear-point="1">Clear point</button>' +
+        "</div>";
+      return;
+    }
+    const site = point.site;
+    const card = point.card;
+    const color = neonColor(card.letter);
+    const links = googleMapsLinks(point.lat, point.lon);
+    const nearest = point.nearest[0];
+    const nearestKm = nearest ? nearest.km : null;
+    const nearestCurated = point.nearestCurated[0];
+    const curatedKm = nearestCurated ? nearestCurated.km : null;
+
+    const tile = (label, value, inferred) =>
+      '<div class="rounded-xl border border-white/[0.06] bg-white/[0.02] px-2.5 py-2">' +
+      '<p class="text-[10px] uppercase tracking-wider text-muted">' + label +
+        (inferred ? '<span class="text-ice/80">*</span>' : "") + "</p>" +
+      '<p class="mt-0.5 text-[13px] tabular-nums text-bone">' + value + "</p></div>";
+
+    const tiles = [
+      tile("Mean temp", fmt(site.tempMeanC, 1) + " °C", false),
+      tile("Max / min", fmt(site.tempDayC, 1) + " / " + fmt(site.tempNightC, 1) + " °C", false),
+      tile("Precipitation", fmt(site.precipMmDay, 2) + " mm/d", false),
+      tile("Slope", fmt(site.slopeDeg, 1) + "°", false),
+      tile("Relief", fmt(site.roughnessM, 0) + " m", false),
+      tile("Elevation", fmt(site.elevationM, 0) + " m", false),
+      tile("Solar", fmt(site.solarKwh, 1) + " kWh/m²", true),
+      tile("Humidity", fmt(site.humidityPct, 0) + " %", true)
+    ].join("");
+
+    // Rows that lean on an inferred field carry an asterisk, exactly like the
+    // discovered candidates do.
+    const inferredRows = new Set(["resources", "processes", "habitability", "subsurface", "operations", "geology"]);
+    const rubric = R.RUBRIC.map((r) => {
+      const value = card.dims[r.key];
+      const bar = value >= 74 ? "var(--grade-a)" : value >= 54 ? "var(--grade-c)" : "var(--grade-e)";
+      return (
+        '<div class="flex items-center gap-2">' +
+          '<span class="w-[86px] shrink-0 text-[10px] uppercase tracking-wider text-muted">' +
+            r.short + (inferredRows.has(r.key) ? '<span class="text-ice/80">*</span>' : "") + "</span>" +
+          '<span class="bar flex-1"><span style="width:' + fmt(value, 0) + "%;background:" + bar + '"></span></span>' +
+          '<span class="w-7 text-right text-[11px] tabular-nums text-muted">' + fmt(value, 0) + "</span>" +
+        "</div>"
+      );
+    }).join("");
+
+    const twinList = (list, body) =>
+      list
+        .map(
+          (t) =>
+            '<button type="button" class="site-row !py-1.5" data-open-body-site="' + t.site.id + '" data-body="' + body + '">' +
+              '<span class="grid h-8 w-11 shrink-0 place-items-center rounded-lg border border-white/10 text-[12px] tabular-nums text-bone">' + t.match.score + "</span>" +
+              '<span class="min-w-0 flex-1"><span class="block truncate text-[12px] text-bone">' + t.site.name + "</span>" +
+              '<span class="block truncate text-[10px] text-muted">' + BODY_META[body].label + " · " + t.site.region + "</span></span>" +
+            "</button>"
+        )
+        .join("");
+
+    host.innerHTML =
+      '<div class="fade-in">' +
+        '<div class="flex items-start gap-3">' +
+          '<span class="grade grade-lg shrink-0" style="color:' + color +
+            ";--grade-glow:" + hexToRgba(color, 0.6) +
+            ";--grade-tint:" + hexToRgba(color, 0.1) + '">' + card.letter + "</span>" +
+          '<div class="min-w-0">' +
+            '<p class="eyebrow">Point grade · Earth · ' + fmt(card.value, 1) + " / 100</p>" +
+            '<h2 class="mt-1 font-display text-[1.4rem] leading-tight tabular-nums">' + pointLabel(point.lat, point.lon) + "</h2>" +
+            '<p class="mt-1 text-[11px] text-muted">Graded where you clicked, not a curated site</p>' +
+          "</div>" +
+        "</div>" +
+        '<div class="mt-2 flex flex-wrap gap-1.5">' +
+          '<span class="chip' + (point.screen != null && point.screen >= 65 ? " border-ice/40 bg-ice/[0.10] text-ice" : "") + '">' +
+            (point.screen == null ? "not screened" : "screen " + fmt(point.screen, 1) + " / 100") + "</span>" +
+          '<span class="chip">above ' + point.betterThan + " of " + point.total + " curated analogs</span>" +
+          '<span class="chip">' + (curatedKm == null ? "no nearby analog" : fmt(curatedKm) + " km to the nearest surveyed analog") + "</span>" +
+        "</div>" +
+        '<div class="mt-3 grid grid-cols-2 gap-1.5">' + tiles + "</div>" +
+        '<div class="mt-4"><p class="eyebrow">Rubric sub-scores</p><div class="mt-2 space-y-1.5">' + rubric + "</div></div>" +
+        '<div class="mt-4 rounded-xl border border-white/[0.07] bg-white/[0.02] p-3">' +
+          '<p class="eyebrow">How this point was graded</p>' +
+          '<p class="mt-1 text-[11px] leading-relaxed text-bone/85">' +
+            "Temperature, precipitation, slope, relief and elevation are read straight from the shipped WorldClim / AWS Terrain rasters at this cell, so they are measurements. " +
+            "Solar, humidity, wind and pressure are NASA POWER measurements taken at surveyed points, estimated here by inverse distance from the four nearest (" +
+            fmt(nearestKm) + " km). Water, dust, science, cave access and biosignature value are team judgements that exist only on catalogued analogs, so they are estimated from the four nearest curated sites (" +
+            fmt(curatedKm) + " km). " +
+          "</p>" +
+          '<p class="mt-2 text-[10px] leading-relaxed text-muted/85">' +
+            "Fields and rubric rows marked * are estimates. Both scales are shown: the screen score measures analog-likeness against the 40 curated sites, the letter grade is the base-suitability rubric, which also weighs water, dust and operations." +
+          "</p>" +
+        "</div>" +
+        '<div class="mt-3 flex flex-wrap gap-1.5">' +
+          '<a class="layer-btn !py-1 !text-[11px]" href="' + links.map + '" target="_blank" rel="noopener noreferrer">Maps ↗</a>' +
+          '<a class="layer-btn !py-1 !text-[11px]" href="' + links.world + '" target="_blank" rel="noopener noreferrer">Worldview ↗</a>' +
+          '<button type="button" class="layer-btn !py-1 !text-[11px] ml-auto" data-clear-point="1">Clear point</button>' +
+        "</div>" +
+        '<div class="mt-4"><p class="eyebrow">Nearest curated analogs</p>' +
+          '<div class="mt-2 space-y-1">' +
+            point.nearestCurated
+              .slice(0, 3)
+              .map(
+                (n) =>
+                  '<button type="button" class="site-row !py-1.5" data-goto-site="' + n.site.id + '">' +
+                    '<span class="grid h-8 w-11 shrink-0 place-items-center rounded-lg border border-ice/25 bg-ice/[0.08] text-[11px] tabular-nums text-ice">' + fmt(n.km) + "</span>" +
+                    '<span class="min-w-0 flex-1"><span class="block truncate text-[12px] text-bone">' + n.site.name + "</span>" +
+                    '<span class="block truncate text-[10px] text-muted">' + n.site.region + " · " + fmt(n.km) + " km away</span></span>" +
+                  "</button>"
+              )
+              .join("") +
+          "</div></div>" +
+        '<div class="mt-4"><p class="eyebrow">What this spot resembles off-world</p>' +
+          '<div class="mt-2 space-y-1">' + twinList(point.moon, "moon") + twinList(point.mars, "mars") + "</div>" +
+        "</div>" +
       "</div>";
   }
 
@@ -2024,6 +2413,10 @@
       renderPointDetail(host);
       return;
     }
+    if (state.body === "earth" && state.earthPoint) {
+      renderEarthPointDetail(host);
+      return;
+    }
     const site = selectedSite();
     if (!site) {
       host.innerHTML =
@@ -2238,6 +2631,11 @@
     renderRail();
     renderDetail();
     if (state.body === "earth") {
+      if (state.earthPoint) {
+        // Re-grade the clicked point against the new weights, not just the pins.
+        gradeEarthPoint(state.earthPoint.lat, state.earthPoint.lon, { keepCamera: true });
+        return;
+      }
       renderEarthMarkers();
       const active = currentDataLayer();
       if (active && active.kind === "suit") refreshFieldLayer(active);
@@ -2357,21 +2755,41 @@
 
     const setBtn = event.target.closest("[data-set]");
     if (setBtn) {      if (state.set !== setBtn.dataset.set) {
+        clearEarthPoint();
         state.set = setBtn.dataset.set;
         const top = sortedSites("earth")[0];
         state.selected.earth = top ? top.site.id : null;
         renderRail();
         renderDetail();
         renderEarthMarkers();
+        renderLegend();
       }
       return;
     }
     const gotoBtn = event.target.closest("[data-goto-site]");
     if (gotoBtn) {
       state.set = "curated";
+      clearEarthPoint();
       selectSite(gotoBtn.dataset.gotoSite, false);
       renderEarthMarkers();
       return;
+    }
+    if (event.target.closest("[data-clear-point]")) {
+      clearEarthPoint();
+      const top = sortedSites("earth")[0];
+      if (top) selectSite(top.site.id, false);
+      else renderDetail();
+      return;
+    }
+    const bodySite = event.target.closest("[data-open-body-site]");
+    if (bodySite) {
+      clearEarthPoint();
+      const body = bodySite.dataset.body;
+      if (BODY_META[body]) {
+        setBody(body);
+        selectSite(bodySite.dataset.openBodySite);
+        return;
+      }
     }
     const galleryOpen = event.target.closest("[data-gallery-open]");
     if (galleryOpen) {

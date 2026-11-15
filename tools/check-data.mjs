@@ -1,6 +1,6 @@
 // Data sanity check: `node tools/check-data.mjs`
 // Fails if any site is missing measurements, scores outside 0-100, or has no source.
-import { readFile } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 
 const load = async (file, name) => {
   const src = await readFile(new URL(`../assets/${file}`, import.meta.url), "utf8");
@@ -149,10 +149,34 @@ for (const [body, globalName, expectations] of gridChecks) {
   }
 }
 
+// The Earth point grader samples shipped rasters directly, so they have to be
+// present, mercator-square and in the range the grader decodes.
+const earthFields = {
+  "earth-elev-meta.js": ["RADIUM_GRID_EARTH_ELEV", -400, 6000],
+  "earth-heat-meta.js": ["RADIUM_GRID_EARTH_HEAT", -25, 32],
+  "earth-tmax-meta.js": ["RADIUM_GRID_EARTH_TMAX", -40, 55],
+  "earth-tmin-meta.js": ["RADIUM_GRID_EARTH_TMIN", -60, 30],
+  "earth-precip-meta.js": ["RADIUM_GRID_EARTH_PRECIP", 0, 12],
+  "earth-slope-meta.js": ["RADIUM_GRID_EARTH_SLOPE", 0, 40],
+  "earth-relief-meta.js": ["RADIUM_GRID_EARTH_RELIEF", 0, 1200]
+};
+for (const [file, [globalName, lo, hi]] of Object.entries(earthFields)) {
+  const metaSrc = await readFile(new URL(`../assets/grids/${file}`, import.meta.url), "utf8");
+  const gridWindow = {};
+  new Function("window", metaSrc)(gridWindow);
+  const meta = gridWindow[globalName];
+  if (!meta || !meta.file) {
+    problems.push(`${file}: missing or unbound meta`);
+    continue;
+  }
+  await access(new URL(`../${meta.file}`, import.meta.url));
+  if (meta.width !== 1440 || meta.height !== 1440) problems.push(`${file}: raster is not 1440x1440`);
+  if (meta.min !== lo || meta.max !== hi) problems.push(`${file}: decode range ${meta.min}..${meta.max}, grader expects ${lo}..${hi}`);
+}
+
 if (problems.length) {
   console.error("FAILED\n" + problems.join("\n"));
   process.exit(1);
-}
-console.log(
+}console.log(
   `OK — ${sites.moon.length} Moon + ${sites.mars.length} Mars + ${sites.earth.length} Earth sites, ${sites.discovered.length} discovered candidates, scores and twins valid.`
 );

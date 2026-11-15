@@ -224,6 +224,7 @@
     RUBRIC,
     DEFAULT_WEIGHTS,
     buildSites,
+    withDims,
     scoreSite,
     similarity,
     topTwins,
