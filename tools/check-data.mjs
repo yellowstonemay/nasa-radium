@@ -176,7 +176,12 @@ const earthFields = {
   "earth-relief-meta.js": ["RADIUM_GRID_EARTH_RELIEF", 0, 1200],
   "earth-season-meta.js": ["RADIUM_GRID_EARTH_SEASON", 0, 200],
   "earth-open-meta.js": ["RADIUM_GRID_EARTH_OPEN", 0, 100],
-  "earth-landcover-meta.js": ["RADIUM_GRID_EARTH_LANDCOVER", 0, 17]
+  "earth-landcover-meta.js": ["RADIUM_GRID_EARTH_LANDCOVER", 0, 17],
+  "earth-solar-meta.js": ["RADIUM_GRID_EARTH_SOLAR", 0.5, 7.5],
+  "earth-pressure-meta.js": ["RADIUM_GRID_EARTH_PRESSURE", 55, 105],
+  "earth-snow-meta.js": ["RADIUM_GRID_EARTH_SNOW", 0, 100],
+  "earth-barren-meta.js": ["RADIUM_GRID_EARTH_BARREN", 0, 100],
+  "earth-green-meta.js": ["RADIUM_GRID_EARTH_GREEN", 0, 100]
 };
 for (const [file, [globalName, lo, hi]] of Object.entries(earthFields)) {
   const metaSrc = await readFile(new URL(`../assets/grids/${file}`, import.meta.url), "utf8");

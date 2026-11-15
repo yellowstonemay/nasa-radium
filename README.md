@@ -42,7 +42,8 @@ python tools\build_moon_temp_textures.py # renders the day/night temperature glo
 node   tools\check-data.mjs         # sanity check: scores, letters, sources, grids, twins
 python tools\build_prospect_scan.py # global screen -> assets/grids/earth-prospect.png + data/prospect-sites.js
 python tools\build_prospect_scan.py --rasters-only # terrain/climate rasters used by the Earth point grade
-python tools\build_land_use.py      # MODIS land cover -> open-land + land-cover rasters, per-site values
+python tools\build_land_use.py      # MODIS land cover -> open-land, snow/ice, barren, green rasters
+python tools\build_earth_atmosphere.py # sunlight + surface pressure rasters
 ```
 
 Deep links for demos: `#earth:earth_twin:connecting-ridge` opens Earth with the twin field lit up
@@ -69,6 +70,9 @@ which is which.
 | Earth base | Three interchangeable base maps: Sentinel-2 cloudless (default, ~10 m), NASA Blue Marble, Esri World Imagery (sharp to zoom 17), all over a cached offline fallback | [EOX](https://s2maps.eu/) ? [GIBS](https://worldview.earthdata.nasa.gov/) ? [Esri](https://www.arcgis.com/home/item.html?id=10df2279f9684e4a9f6a7f08febac2a9) |
 | Earth boundaries | Country borders, place and water labels | Esri World Boundaries and Places |
 | Earth heat map | WorldClim 2.1 `bio_1` annual mean air temperature, 10 arc-minute, land only | [WorldClim](https://www.worldclim.org/data/worldclim21.html) |
+| Earth slope, roughness, warmest/coldest month, precipitation | WorldClim 2.1 bio and AWS terrain, shipped as 0.25 degree rasters | [WorldClim](https://www.worldclim.org/data/worldclim21.html) · [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) |
+| Snow/ice, barren, green cover | MODIS IGBP land cover area shares via NASA GIBS | [GIBS](https://earthdata.nasa.gov/gibs) |
+| Sunlight, surface pressure | POWER site means blended with latitude; barometric pressure from elevation | [POWER](https://power.larc.nasa.gov/) · this repo |
 | Earth elevation | **computed** 0.25 degree cell means of the AWS terrain tiles | [AWS Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) |
 | Earth analog grade field | **computed** from the rubric (nine rows on Earth, eight elsewhere), follows the mission designer | this repo |
 | Earth twin similarity field | **computed** similarity to the selected Moon/Mars target | this repo |
@@ -85,15 +89,33 @@ opacity slider and a `Turn off` action inside the data popover.
 | Group | Options |
 | --- | --- |
 | Satellite view | Sentinel-2 cloudless (default) · Blue Marble · Esri World Imagery |
-| Terrain | Elevation |
-| Analysis | Analog grade field (default) · Heat map · Twin similarity |
-| Screening | Prospect scan |
+| Terrain | Elevation · Typical slope · Roughness |
+| Surface temperature | Annual mean temperature · Warmest month · Coldest month |
+| Sunlight and energy | Sunlight at the surface (modelled) |
+| Water and ice | Precipitation · Permanent snow and ice |
+| Atmosphere and dust | Surface pressure (barometric) |
+| Surface cover | Open land · Barren ground · Green cover |
+| Analysis | Analog grade field (default) · Twin similarity · Prospect scan |
 | Overlays | Boundaries and place labels |
-All five data layers draw through **one ramp family** (deep violet at the low end, teal and lime
+
+Sixteen data layers, each declaring its raster, ramp and units in the layer list so the menu, the
+legend and the colouriser cannot drift apart. Twelve of them are shipped 8-bit rasters sampled from
+the same pipeline the point grader uses:
+
+| Layer | Source | Kind |
+| --- | --- | --- |
+| Elevation, slope, roughness | AWS Terrain Tiles, slope computed at native resolution | measured |
+| Annual mean / warmest month / coldest month temperature | WorldClim 2.1 `bio_1`, `bio_5`, `bio_6` | measured |
+| Precipitation | WorldClim 2.1 `bio_12` / 365 | measured |
+| Permanent snow and ice (class 15 share), barren ground (16), green cover (forest + shrub + savanna + grass + cropland) | MODIS IGBP land cover via GIBS, area-share binned | measured |
+| Sunlight at the surface | NASA POWER means at the 79 catalogued sites blended with a clear-sky latitude term | **modelled** |
+| Surface pressure | standard atmosphere applied to the elevation grid | **modelled** |
+
+All data layers draw through **one ramp family** (deep violet at the low end, teal and lime
 through the middle, amber at the top) so they read as the same instrument, and each carries a legend
-with its real value range. Opacity is 86% by default and the alpha curve is biased toward the high
-end, so the field is unmistakable under a data layer while the imagery still shows through. Rasters ship as 8-bit masks and are colourised in the browser, so the
-ramp, the opacity slider and the legend always agree. Every Earth raster and generated field is
+with its real value range. Opacity is 86% by default, and every valid raster pixel gets full alpha so
+a physical layer is unmistakable under the imagery; the opacity slider is the control. Rasters ship as 8-bit masks and are colourised in the
+browser, so the ramp, the opacity slider and the legend always agree. Every Earth raster and generated field is
 square (1440x1440) and resampled onto **Web Mercator rows**, because Leaflet paints an image overlay
 as a single quad: shipping equirectangular data put the 30 N row at 50 N on screen (a 20 degree
 drift, visible as the warm belt sitting over Canada). The two interpolated fields (grade, twin) are

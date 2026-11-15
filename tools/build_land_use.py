@@ -221,7 +221,20 @@ def build_grids(colours: dict[tuple[int, int, int], int]) -> tuple[np.ndarray, n
     shares = class_area.sum(axis=0)
     valid = (land_frac > 0.4) & (shares > 0)
     dominant = np.where(valid, dominant, -1)
-    return openness, dominant, valid
+
+    # Class shares the map layers need: permanent snow and ice, barren ground,
+    # and everything green (the four forest classes plus shrub, savanna, grass,
+    # cropland and mosaic).
+    def share_of(classes: list[int]) -> np.ndarray:
+        rows = [index_of[cls] for cls in classes if cls in index_of]
+        return np.clip(class_area[rows].sum(axis=0) * 100.0, 0, 100)
+
+    extras = {
+        "snow": share_of([15]),
+        "barren": share_of([16]),
+        "veg": share_of([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14]),
+    }
+    return openness, dominant, valid, extras
 
 
 def site_values(openness: np.ndarray, dominant: np.ndarray, valid: np.ndarray,
@@ -250,12 +263,30 @@ def main() -> int:
     GRIDS.mkdir(parents=True, exist_ok=True)
     colours, labels = colormap()
     print(f"colormap: {len(colours)} colours -> {len(labels)} classes")
-    openness, dominant, valid = build_grids(colours)
+    openness, dominant, valid, extras = build_grids(colours)
 
     encode(openness, valid, 0.0, 100.0, "earth-open", {
         "global": "RADIUM_GRID_EARTH_OPEN",
         "units": "open-land score 0-100",
         "source": "MODIS Combined IGBP Land Cover Type (annual, 500 m) via NASA GIBS, area-share binned to 0.25 degrees",
+        "url": "https://earthdata.nasa.gov/gibs",
+    })
+    encode(extras["snow"], valid, 0.0, 100.0, "earth-snow", {
+        "global": "RADIUM_GRID_EARTH_SNOW",
+        "units": "percent of cell",
+        "source": "MODIS IGBP class 15 (permanent snow and ice) area share via NASA GIBS",
+        "url": "https://earthdata.nasa.gov/gibs",
+    })
+    encode(extras["barren"], valid, 0.0, 100.0, "earth-barren", {
+        "global": "RADIUM_GRID_EARTH_BARREN",
+        "units": "percent of cell",
+        "source": "MODIS IGBP class 16 (barren) area share via NASA GIBS",
+        "url": "https://earthdata.nasa.gov/gibs",
+    })
+    encode(extras["veg"], valid, 0.0, 100.0, "earth-green", {
+        "global": "RADIUM_GRID_EARTH_GREEN",
+        "units": "percent of cell",
+        "source": "MODIS IGBP forest, shrub, savanna, grass and cropland classes summed via NASA GIBS",
         "url": "https://earthdata.nasa.gov/gibs",
     })
     encode(dominant.astype(np.float64), valid, 0.0, 17.0, "earth-landcover", {

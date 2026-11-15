@@ -95,13 +95,131 @@
             {
               id: "earth_elev",
               label: "Elevation",
-              note: "RADIUM grid, 28 km cells, mean elevation from AWS terrain tiles.",
-              kind: "elev"            },
+              note: "Cell-mean elevation from AWS Terrain Tiles (SRTM / NED / GMTED / ETOPO blend).",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_ELEV",
+              ramp: "elev"
+            },
+            {
+              id: "earth_slope",
+              label: "Typical slope",
+              note: "Mean slope per cell, computed at native DEM resolution before binning to 0.25°.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_SLOPE",
+              ramp: "grade"
+            },
+            {
+              id: "earth_rough",
+              label: "Roughness",
+              note: "Within-cell elevation standard deviation: how broken the ground is.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_RELIEF",
+              ramp: "grade"
+            }
+          ]
+        },
+        {
+          group: "Surface temperature",
+          items: [
+            {
+              id: "earth_temp",
+              label: "Annual mean temperature",
+              note: "WorldClim 2.1 bio_1 temperature of the air, cold is violet and hot is amber.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_HEAT",
+              ramp: "heat"
+            },
+            {
+              id: "earth_tmax",
+              label: "Warmest month",
+              note: "WorldClim bio_5: maximum temperature of the warmest month.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_TMAX",
+              ramp: "heat"
+            },
+            {
+              id: "earth_tmin",
+              label: "Coldest month",
+              note: "WorldClim bio_6: minimum temperature of the coldest month, the number that sizes hardware.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_TMIN",
+              ramp: "heat"
+            }
+          ]
+        },
+        {
+          group: "Sunlight and energy",
+          items: [
+            {
+              id: "earth_solar",
+              label: "Sunlight at the surface",
+              note: "Modelled: NASA POWER means at the 79 catalogued sites, blended with a clear-sky latitude term.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_SOLAR",
+              ramp: "heat"
+            }
+          ]
+        },
+        {
+          group: "Water and ice",
+          items: [
+            {
+              id: "earth_precip",
+              label: "Precipitation",
+              note: "WorldClim 2.1 bio_12 annual precipitation divided by 365.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_PRECIP",
+              ramp: "scan"
+            },
+            {
+              id: "earth_snow",
+              label: "Permanent snow and ice",
+              note: "Share of each cell in MODIS class 15, the ice and permanent snow surface.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_SNOW",
+              ramp: "scan"
+            }
+          ]
+        },
+        {
+          group: "Atmosphere and dust",
+          items: [
+            {
+              id: "earth_press",
+              label: "Surface pressure",
+              note: "Barometric: the standard atmosphere applied to the shipped elevation grid.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_PRESSURE",
+              ramp: "elev"
+            }
+          ]
+        },
+        {
+          group: "Surface cover",
+          items: [
             {
               id: "earth_openland",
               label: "Open land",
               note: "How usable the ground is: MODIS land cover scored barren 100 to built-up 0.",
-              kind: "open"
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_OPEN",
+              ramp: "grade"
+            },
+            {
+              id: "earth_barren",
+              label: "Barren ground",
+              note: "Share of each cell in MODIS class 16: rock, gravel and sand with no vegetation.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_BARREN",
+              ramp: "scan"
+            },
+            {
+              id: "earth_green",
+              label: "Green cover",
+              note: "Forest, shrub, savanna, grass and cropland classes summed: the opposite of a lunar surface.",
+              kind: "raster",
+              meta: "RADIUM_GRID_EARTH_GREEN",
+              ramp: "scan"
             }
           ]
         },
@@ -115,27 +233,19 @@
               kind: "suit"
             },
             {
-              id: "earth_temp",
-              label: "Heat map",
-              note: "Annual mean air temperature, WorldClim 2.1. Cold is violet, hot is amber.",
-              kind: "temp"
-            },
-            {
               id: "earth_twin",
               label: "Twin similarity",
               note: "Similarity to the selected Moon or Mars target.",
               kind: "twin"
-            }
-          ]
-        },
-        {
-          group: "Screening",
-          items: [
+            },
             {
               id: "earth_prospect",
               label: "Prospect scan",
               note: "Analog-likeness of every quarter-degree cell; cells scoring 65+ are drawn.",
-              kind: "raster"
+              kind: "raster",
+              meta: "RADIUM_PROSPECT_META",
+              ramp: "scan",
+              floor: 65
             }
           ]
         }
@@ -1273,7 +1383,9 @@
       data[i] = rgb[0];
       data[i + 1] = rgb[1];
       data[i + 2] = rgb[2];
-      data[i + 3] = Math.round(30 + 150 * Math.pow(t, 0.95));
+      // Physical rasters cover the whole cell, so every valid pixel gets the same
+      // weight; the opacity slider is the control, not the value ramp.
+      data[i + 3] = 205;
     }
     ctx.putImageData(pixels, 0, 0);
     entry.scores = scores;
@@ -1292,6 +1404,9 @@
     };
     rasterCache[id] = entry;
     const image = new Image();
+    // The loader image has to stay reachable: an Image with a load in flight and
+    // no reference can be collected, and then onload never fires.
+    entry.image = image;
     image.onload = () => {
       entry.url = colouriseRaster(entry, image, rampName, floorPercent);
       if (state.body === "earth" && state.layer.earth === id) applyEarthLayer();
@@ -1320,17 +1435,21 @@
   /* These five rasters plus the elevation and heat maps are written by
      tools/build_prospect_scan.py, so a click is graded from the same measured
      fields the global screen used - no server, works offline at the venue. */
+  /* Cache keys are prefixed so a sampling entry can never shadow the colourised
+     layer with the same source, which is why half the layers looked blank. */
   const POINT_RASTERS = {
-    elevationM: ["earth_elev", "RADIUM_GRID_EARTH_ELEV"],
-    tempMeanC: ["earth_heat", "RADIUM_GRID_EARTH_HEAT"],
-    tempMaxC: ["earth_tmax", "RADIUM_GRID_EARTH_TMAX"],
-    tempMinC: ["earth_tmin", "RADIUM_GRID_EARTH_TMIN"],
-    precipMmDay: ["earth_precip", "RADIUM_GRID_EARTH_PRECIP"],
-    slopeDeg: ["earth_slope", "RADIUM_GRID_EARTH_SLOPE"],
-    roughnessM: ["earth_relief", "RADIUM_GRID_EARTH_RELIEF"],
-    landUse: ["earth_open", "RADIUM_GRID_EARTH_OPEN"],
-    landClass: ["earth_cover", "RADIUM_GRID_EARTH_LANDCOVER"],
-    precipSeasonality: ["earth_season", "RADIUM_GRID_EARTH_SEASON"]
+    elevationM: ["sample_elev", "RADIUM_GRID_EARTH_ELEV"],
+    tempMeanC: ["sample_heat", "RADIUM_GRID_EARTH_HEAT"],
+    tempMaxC: ["sample_tmax", "RADIUM_GRID_EARTH_TMAX"],
+    tempMinC: ["sample_tmin", "RADIUM_GRID_EARTH_TMIN"],
+    precipMmDay: ["sample_precip", "RADIUM_GRID_EARTH_PRECIP"],
+    slopeDeg: ["sample_slope", "RADIUM_GRID_EARTH_SLOPE"],
+    roughnessM: ["sample_relief", "RADIUM_GRID_EARTH_RELIEF"],
+    landUse: ["sample_open", "RADIUM_GRID_EARTH_OPEN"],
+    landClass: ["sample_cover", "RADIUM_GRID_EARTH_LANDCOVER"],
+    precipSeasonality: ["sample_season", "RADIUM_GRID_EARTH_SEASON"],
+    solarKwh: ["sample_solar", "RADIUM_GRID_EARTH_SOLAR"],
+    pressureKpa: ["sample_press", "RADIUM_GRID_EARTH_PRESSURE"]
   };
 
   /* Sampling-only loader: draws the PNG once and keeps the raw bytes, with no
@@ -1343,6 +1462,7 @@
     const entry = { meta, scores: null, width: meta.width, height: meta.height, sample: true };
     rasterCache[id] = entry;
     const image = new Image();
+    entry.image = image;
     image.onload = () => {
       const canvas = document.createElement("canvas");
       canvas.width = entry.width;
@@ -1465,10 +1585,10 @@
       precipMmDay: measured.precipMmDay,
       landUse: measured.landUse,
       landClass: measured.landClass == null ? null : Math.round(measured.landClass),
-      solarKwh: inferred.solarKwh,
+      solarKwh: measured.solarKwh == null ? inferred.solarKwh : measured.solarKwh,
       humidityPct: inferred.humidityPct,
       windMs: inferred.windMs,
-      pressurePa: inferred.pressurePa,
+      pressurePa: measured.pressureKpa == null ? inferred.pressurePa : measured.pressureKpa * 1000,
       iceIndex: inferred.iceIndex,
       iceDistanceKm: 0,
       dustIndex: inferred.dustIndex,
@@ -1529,9 +1649,8 @@
   }
 
   function preloadRasters() {
-    Object.entries(RASTER_BY_LAYER).forEach(([id, [metaGlobal, rampName, floorPercent]]) => {
-      ensureRaster(id, metaGlobal, rampName, floorPercent);
-    });
+    // Layers are decoded on demand: thirteen 1440x1440 readbacks at boot would
+    // delay the first paint for data most visits never open.
   }
 
   /* The seven fields the Earth point grader samples are only needed once the
@@ -1565,12 +1684,16 @@
   /* id -> [meta global, ramp, display floor in percent]. The floor keeps the
      prospect scan honest: it only paints cells that actually passed the screen,
      instead of tinting every land cell. */
-  const RASTER_BY_LAYER = {
-    earth_prospect: ["RADIUM_PROSPECT_META", "scan", 65],
-    earth_elev: ["RADIUM_GRID_EARTH_ELEV", "elev", null],
-    earth_temp: ["RADIUM_GRID_EARTH_HEAT", "heat", null],
-    earth_openland: ["RADIUM_GRID_EARTH_OPEN", "grade", null]
-  };
+  /* id -> meta global, ramp, display floor. Derived from the layer list so a new
+     layer only has to declare its meta once. */
+  const RASTER_BY_LAYER = {};
+  LAYERS.earth.data.forEach((group) => {
+    group.items.forEach((item) => {
+      if (item.kind === "raster" && item.meta) {
+        RASTER_BY_LAYER[item.id] = [item.meta, item.ramp || "grade", item.floor == null ? null : item.floor];
+      }
+    });
+  });
 
   function applyEarthLayer() {
     if (!earthMap) return;
@@ -1927,30 +2050,23 @@
               (range ? fmt(range.lo, 0) : "low") + (layer.kind === "twin" ? "%" : " pts") + "</span><span>" +
               (range ? fmt(range.hi, 0) : "high") + (layer.kind === "twin" ? "%" : " pts") + "</span></div>";
         }
-      } else if (layer.kind === "elev") {
-        const meta = window.RADIUM_GRID_EARTH_ELEV;
-        scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.elev + '"></div>' +
-          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-            fmt(meta.min, 0) + " m</span><span>" + fmt(meta.max, 0) + " m</span></div>";
-      } else if (layer.kind === "temp") {
-        const meta = window.RADIUM_GRID_EARTH_HEAT;
-        scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.heat + '"></div>' +
-          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
-            fmt(meta.min, 0) + " °C</span><span>" + fmt(meta.max, 0) + " °C</span></div>";
-      } else if (layer.kind === "open") {
-        scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.grade + '"></div>' +
-          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>built-up</span><span>open</span></div>';
       } else if (layer.kind === "raster") {
-        const meta = window.RADIUM_PROSPECT_META;
+        // Every raster layer declares its meta, ramp and units, so one branch
+        // draws all of their legends.
+        const meta = layer.meta ? window[layer.meta] : null;
+        const rampCss = RAMP_CSS[layer.ramp || "grade"] || RAMP_CSS.grade;
+        const units = meta && meta.units ? " " + meta.units : "";
+        const low = meta ? fmt(meta.min, Math.abs(meta.max) < 10 ? 1 : 0) : "low";
+        const high = meta ? fmt(meta.max, Math.abs(meta.max) < 10 ? 1 : 0) : "high";
         scale =
-          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + RAMP_CSS.scan + '"></div>' +
-          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>0</span><span>100</span></div>' +
-          (meta ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
-            meta.screenedCells.toLocaleString() + " land cells screened ? bright zones are where new " +
-            "candidates cluster. Switch the shortlist to Discovered to see the 39 picks.</p>" : "");
+          '<div class="mt-2 h-1.5 w-full rounded-full" style="background:' + rampCss + '"></div>' +
+          '<div class="mt-1 flex justify-between text-[10px] tabular-nums text-muted"><span>' +
+            low + units + "</span><span>" + high + units + "</span></div>" +
+          (layer.meta === "RADIUM_PROSPECT_META" && meta
+            ? '<p class="mt-1 text-[10px] leading-relaxed text-muted">' +
+              meta.screenedCells.toLocaleString() + " land cells screened. Bright zones are where new " +
+              "candidates cluster; switch the shortlist to Discovered to see the 39 picks.</p>"
+            : "");
       }
     }
 
@@ -2135,9 +2251,10 @@
       tile("Open land", fmt(site.landUse) + " / 100", false),
       tile("Land cover", landClassName(site.landClass), false),
       tile("Candidate fit", fmt(point.screen, 1) + " / 100", false),
-      tile("Solar", fmt(site.solarKwh, 1) + " kWh/m²", true),
+      tile("Solar", fmt(site.solarKwh, 1) + " kWh/m²", false),
       tile("Humidity", fmt(site.humidityPct, 0) + " %", true),
-      tile("Wind", fmt(site.windMs, 1) + " m/s", true)
+      tile("Wind", fmt(site.windMs, 1) + " m/s", true),
+      tile("Pressure", fmt(site.pressurePa / 1000, 1) + " kPa", false)
     ].join("");
 
     // Rows that lean on an inferred field carry an asterisk, exactly like the
